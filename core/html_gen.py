@@ -79,22 +79,22 @@ def generate_html(data, out_path, template_path=None):
 
     html = re.sub(
         r"const GRAPH = .*?;\n",
-        "const GRAPH = " + graph_json + ";\n",
+        lambda m: "const GRAPH = " + graph_json + ";\n",
         html, count=1, flags=re.DOTALL,
     )
     html = re.sub(
         r"const WITHDRAWALS = .*?;\n",
-        "const WITHDRAWALS = " + withdrawals_json + ";\n",
+        lambda m: "const WITHDRAWALS = " + withdrawals_json + ";\n",
         html, count=1, flags=re.DOTALL,
     )
     html = re.sub(
         r"const WITHDRAWAL_TXNS = .*?;\n",
-        "const WITHDRAWAL_TXNS = " + withdrawal_txns_json + ";\n",
+        lambda m: "const WITHDRAWAL_TXNS = " + withdrawal_txns_json + ";\n",
         html, count=1, flags=re.DOTALL,
     )
     html = re.sub(
         r"const EXTRA_TXNS = .*?;\n",
-        "const EXTRA_TXNS = " + extra_txns_json + ";\n",
+        lambda m: "const EXTRA_TXNS = " + extra_txns_json + ";\n",
         html, count=1, flags=re.DOTALL,
     )
 
