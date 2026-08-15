@@ -351,5 +351,20 @@ def generate_pdf(data, out_path):
                 c.drawString(x + PAD, cy - 8, rest[0])
                 cy -= 10.5
 
+    # Printing note. This diagram's page size is sized to its content
+    # and can be far larger than any standard paper size, so it can
+    # only ever come out correctly on a single physical sheet if the
+    # print dialog's own "Fit to Printable Area" / "Shrink to Fit"
+    # scaling is used -- no setting inside a PDF file can force that
+    # choice for the person printing it, so the instruction is made
+    # explicit directly on the page itself instead.
+    c.setFont("Helvetica-Oblique", 8)
+    c.setFillColor(colors.HexColor("#888888"))
+    c.drawCentredString(
+        canvas_w / 2, 18,
+        "To print on a single sheet of any paper size (A4, A3, A2, A1, A0), "
+        "select \"Fit to Printable Area\" or \"Shrink to Fit\" in your print dialog."
+    )
+
     c.save()
     return str(out_path)
