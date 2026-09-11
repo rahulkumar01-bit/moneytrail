@@ -1,553 +1,215 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Money Trail Flowchart — by Layer</title>
-<style>
-  :root{
-    --bg:#0f1115; --panel:#161a22; --panel2:#1d2330; --border:#2a3140;
-    --text:#e8eaf0; --text-dim:#9aa3b5; --text-mute:#6b7386;
-    --accent:#4d8eff; --amber:#f0a83a; --teal:#2fbf9f; --coral:#e0654a;
-    --purple:#9d7cf0; --pink:#e668a0; --gray:#7d8598; --green:#5fbf5f; --red:#e04a4a;
-  }
-  *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
-  #toolbar{
-    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
-    padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);
-  }
-  #toolbar h1{font-size:15px;font-weight:600;margin:0;color:var(--text);white-space:nowrap;}
-  #toolbar .sub{font-size:12px;color:var(--text-dim);white-space:nowrap;}
-  #search{
-    flex:1;max-width:280px;background:var(--panel2);border:1px solid var(--border);
-    color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;
-  }
-  button{
-    background:var(--panel2);border:1px solid var(--border);color:var(--text);
-    border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;
-  }
-  button:hover{background:#242c3c;}
-  #stage-wrap{
-    position:relative;width:100%;height:calc(100vh - 54px);overflow:hidden;cursor:grab;
-    background:
-      radial-gradient(circle at 1px 1px, #1e2430 1px, transparent 1px) 0 0/22px 22px;
-  }
-  #stage-wrap.grabbing{cursor:grabbing;}
-  #stage{
-    position:absolute;top:0;left:0;transform-origin:0 0;
-  }
-  svg{display:block;overflow:visible;}
-  .col-label{font-size:12px;fill:var(--text-mute);font-weight:600;}
-  .edge{fill:none;stroke:#3a4258;stroke-width:1.4;opacity:0.55;transition:opacity .15s, stroke .15s, stroke-width .15s;}
-  .edge.hi{stroke:var(--amber);opacity:1;stroke-width:2.4;}
-  .edge.dim{opacity:0.08;}
-  .node-box{cursor:ns-resize;transition:filter .15s;}
-  .node-box:hover{filter:brightness(1.25);}
-  .node-box.dim{opacity:0.18;}
-  .node-box.dragging{cursor:ns-resize;filter:brightness(1.4) drop-shadow(0 4px 8px rgba(0,0,0,0.5));}
-  .node-box.dragging rect{stroke:var(--accent);stroke-width:2;}
-  .node-title{font-size:12px;font-weight:600;fill:#fff;}
-  .node-sub{font-size:10px;fill:rgba(255,255,255,0.75);}
-  .flag-dot{stroke:rgba(0,0,0,0.35);stroke-width:0.6;}
-  #panel{
-    position:fixed;top:54px;right:0;width:340px;height:calc(100vh - 54px);
-    background:var(--panel);border-left:1px solid var(--border);
-    padding:18px;overflow-y:auto;transform:translateX(100%);transition:transform .2s;
-    z-index:30;
-  }
-  #panel.open{transform:translateX(0);}
-  #panel h2{font-size:14px;margin:0 0 4px;}
-  #panel .acct{font-family:monospace;font-size:13px;color:var(--accent);word-break:break-all;}
-  #panel .close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;padding:0;}
-  #panel .section{margin-top:16px;}
-  #panel .section h3{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-mute);margin:0 0 8px;font-weight:600;}
-  .tx-item{
-    background:var(--panel2);border:1px solid var(--border);border-radius:8px;
-    padding:10px 12px;margin-bottom:8px;font-size:12px;line-height:1.6;
-  }
-  .tx-item .amt{color:var(--amber);font-weight:600;}
-  .tx-item .lbl{color:var(--text-mute);}
-  .tx-item .rmk{color:var(--text-dim);margin-top:4px;font-size:11px;}
-  .wd-grid{display:flex;gap:8px;}
-  .wd-card{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center;}
-  .wd-card .wd-label{font-size:10px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.03em;}
-  .wd-card .wd-val{font-size:13px;font-weight:600;margin-top:3px;}
-  .wd-card.cash .wd-val{color:var(--red);}
-  .wd-card.cheque .wd-val{color:var(--amber);}
-  .wd-card.hold .wd-val{color:var(--green);}
-  #legend{
-    position:fixed;left:16px;bottom:16px;background:var(--panel);border:1px solid var(--border);
-    border-radius:8px;padding:10px 14px;font-size:11px;color:var(--text-dim);z-index:20;
-    display:flex;gap:14px;align-items:center;flex-wrap:wrap;max-width:70vw;
-  }
-  #legend .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
-  #hint{position:fixed;left:16px;top:62px;font-size:11px;color:var(--text-mute);z-index:20;}
-</style>
-</head>
-<body>
-
-<div id="toolbar">
-  <h1>Money trail — by layer</h1>
-  <div class="sub">86 accounts &middot; 124 transactions &middot; layers 0&ndash;9 &middot; &#8377;6,67,054 cash &middot; &#8377;17,00,000 cheque &middot; &#8377;24,94,520 on hold</div>
-  <input id="search" placeholder="Search account number...">
-  <button id="reset-btn">Reset view</button>
-  <button id="fit-btn">Fit to screen</button>
-</div>
-
-<div id="stage-wrap">
-  <div id="stage"></div>
-</div>
-
-<div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account</div>
-
-<div id="legend"></div>
-
-<div id="panel">
-  <button class="close" id="panel-close">&times;</button>
-  <div id="panel-body"></div>
-</div>
-
-<script>
-const GRAPH = {"nodes": [{"id": "025161900002702", "depth": 2, "bank": "Yes Bank", "short": "2702", "x": 580, "y": 840.0}, {"id": "073361900002584", "depth": 3, "bank": "Yes Bank", "short": "2584", "x": 840, "y": 1074.0}, {"id": "252020252520", "depth": 2, "bank": "IndusInd Bank", "short": "2520", "x": 580, "y": 1152.0}, {"id": "XXXXXXXXXXXX1122", "depth": 6, "bank": "IndusInd Bank", "short": "1122", "x": 1620, "y": 996.0}, {"id": "1183172000009635", "depth": 1, "bank": "Karur Vysya Bank", "short": "9635", "x": 320, "y": 450.0}, {"id": "8148064627", "depth": 3, "bank": "Indian Bank ", "short": "4627", "x": 840, "y": 216.0}, {"id": "60077844857", "depth": 7, "bank": "Bank of Maharashtra", "short": "4857", "x": 1880, "y": 567.0}, {"id": "9901068100088", "depth": 7, "bank": "Standard Chartered Bank", "short": "0088", "x": 1880, "y": 1035.0}, {"id": "7755965625", "depth": 3, "bank": "Airtel Payments Bank", "short": "5625", "x": 840, "y": 372.0}, {"id": "409723022539", "depth": 6, "bank": "Ratnakar Bank Limited ", "short": "2539", "x": 1620, "y": 840.0}, {"id": "915010034263332", "depth": 0, "bank": "Axis Bank", "short": "3332", "x": 60, "y": 684.0}, {"id": "201002579451", "depth": 4, "bank": "IndusInd Bank", "short": "9451", "x": 1100, "y": 879.0}, {"id": "8179321433", "depth": 2, "bank": "Indian Bank ", "short": "1433", "x": 580, "y": 216.0}, {"id": "29960210003664", "depth": 6, "bank": "UCO Bank", "short": "3664", "x": 1620, "y": 450.0}, {"id": "184100050600349", "depth": 2, "bank": "Tamilnad Mercantile Bank Ltd.", "short": "0349", "x": 580, "y": 60.0}, {"id": "339705000857", "depth": 9, "bank": "ICICI Bank", "short": "0857", "x": 2400, "y": 762.0}, {"id": "344905003219", "depth": 7, "bank": "ICICI Bank", "short": "3219", "x": 1880, "y": 879.0}, {"id": "269901000009767", "depth": 1, "bank": "Indian Overseas Bank", "short": "9767", "x": 320, "y": 528.0}, {"id": "570839513540", "depth": 7, "bank": "Others", "short": "3540", "x": 1880, "y": 645.0}, {"id": "211074071", "depth": 3, "bank": "Others", "short": "4071", "x": 840, "y": 450.0}, {"id": "82141900035646", "depth": 3, "bank": "Sarva Haryana Gramin Bank ", "short": "5646", "x": 840, "y": 528.0}, {"id": "2334102000001274", "depth": 1, "bank": "IDBI Bank", "short": "1274", "x": 320, "y": 840.0}, {"id": "50100596894694", "depth": 6, "bank": "HDFC Bank", "short": "4694", "x": 1620, "y": 528.0}, {"id": "50200093038670", "depth": 4, "bank": "HDFC Bank", "short": "8670", "x": 1100, "y": 567.0}, {"id": "NA", "depth": 7, "bank": "Others", "short": "NA", "x": 1880, "y": 723.0}, {"id": "139261900001410", "depth": 2, "bank": "Yes Bank", "short": "1410", "x": 580, "y": 762.0}, {"id": "248802000000769", "depth": 1, "bank": "Indian Overseas Bank", "short": "0769", "x": 320, "y": 606.0}, {"id": "1238010002089", "depth": 3, "bank": "Catholic Syrian Bank LTD. ", "short": "2089", "x": 840, "y": 606.0}, {"id": "245105000500", "depth": 8, "bank": "ICICI Bank", "short": "0500", "x": 2140, "y": 840.0}, {"id": "1gopay8700466713", "depth": 4, "bank": "HDFC Bank", "short": "6713", "x": 1100, "y": 1035.0}, {"id": "4750881278", "depth": 6, "bank": "Kotak Mahindra Bank", "short": "1278", "x": 1620, "y": 606.0}, {"id": "925010024223897", "depth": 0, "bank": "Axis Bank", "short": "3897", "x": 60, "y": 762.0}, {"id": "060911991000283", "depth": 1, "bank": "UNITY SMALL FINANCE BANK", "short": "0283", "x": 320, "y": 918.0}, {"id": "1811222020842426", "depth": 3, "bank": "AU Bank", "short": "2426", "x": 840, "y": 1230.0}, {"id": "925020009451810", "depth": 2, "bank": "Axis Bank", "short": "1810", "x": 580, "y": 1308.0}, {"id": "0636252400002201", "depth": 6, "bank": "Karnataka Bank Ltd", "short": "2201", "x": 1620, "y": 684.0}, {"id": "44249016396", "depth": 2, "bank": "State Bank of India", "short": "6396", "x": 580, "y": 1464.0}, {"id": "00000035850158957", "depth": 4, "bank": "State Bank of India", "short": "8957", "x": 1100, "y": 333.0}, {"id": "2433101003606", "depth": 1, "bank": "Canara Bank ", "short": "3606", "x": 320, "y": 996.0}, {"id": "19733211008842", "depth": 2, "bank": "UCO Bank", "short": "8842", "x": 580, "y": 294.0}, {"id": "0825001500006982", "depth": 1, "bank": "Punjab National Bank ", "short": "6982", "x": 320, "y": 1074.0}, {"id": "2301262051096450", "depth": 5, "bank": "AU Bank", "short": "6450", "x": 1360, "y": 918.0}, {"id": "395201000000432", "depth": 2, "bank": "Indian Overseas Bank", "short": "0432", "x": 580, "y": 1386.0}, {"id": "925020033132422", "depth": 2, "bank": "Axis Bank", "short": "2422", "x": 580, "y": 1230.0}, {"id": "8174278469", "depth": 2, "bank": "Indian Bank ", "short": "8469", "x": 580, "y": 372.0}, {"id": "50100380080920", "depth": 2, "bank": "HDFC Bank", "short": "0920", "x": 580, "y": 918.0}, {"id": "005001001824995", "depth": 6, "bank": "City Union Bank", "short": "4995", "x": 1620, "y": 762.0}, {"id": "2502270597178842", "depth": 1, "bank": "AU Bank", "short": "8842", "x": 320, "y": 684.0}, {"id": "95252200043287", "depth": 0, "bank": "Canara Bank (including Syndicate Bank)", "short": "3287", "x": 60, "y": 840.0}, {"id": "280601000012946", "depth": 2, "bank": "Indian Overseas Bank", "short": "2946", "x": 580, "y": 996.0}, {"id": "002261100000025", "depth": 4, "bank": "PhonePe", "short": "0025", "x": 1100, "y": 1113.0}, {"id": "280601000000845", "depth": 3, "bank": "Indian Overseas Bank", "short": "0845", "x": 840, "y": 684.0}, {"id": "924020042501050", "depth": 4, "bank": "Axis Bank", "short": "1050", "x": 1100, "y": 957.0}, {"id": "684551203128", "depth": 3, "bank": "ICICI Bank", "short": "3128", "x": 840, "y": 1308.0}, {"id": "925010017216208", "depth": 5, "bank": "Axis Bank", "short": "6208", "x": 1360, "y": 762.0}, {"id": "60318954042", "depth": 5, "bank": "Bank of Maharashtra", "short": "4042", "x": 1360, "y": 528.0}, {"id": "008100050600566", "depth": 2, "bank": "Tamilnad Mercantile Bank Ltd.", "short": "0566", "x": 580, "y": 1074.0}, {"id": "280601000012964", "depth": 3, "bank": "Indian Overseas Bank", "short": "2964", "x": 840, "y": 762.0}, {"id": "074604998501195001", "depth": 3, "bank": "Catholic Syrian Bank LTD. ", "short": "5001", "x": 840, "y": 996.0}, {"id": "2502213266592846", "depth": 5, "bank": "AU Bank", "short": "2846", "x": 1360, "y": 996.0}, {"id": "200003028944", "depth": 3, "bank": "Equitas Bank", "short": "8944", "x": 840, "y": 1152.0}, {"id": "239001531610", "depth": 4, "bank": "ICICI Bank", "short": "1610", "x": 1100, "y": 411.0}, {"id": "08110100013440", "depth": 4, "bank": "Bank of Baroda ", "short": "3440", "x": 1100, "y": 1191.0}, {"id": "001425000000051", "depth": 3, "bank": "Yes Bank", "short": "0051", "x": 840, "y": 840.0}, {"id": "6148494781", "depth": 4, "bank": "Indian Bank ", "short": "4781", "x": 1100, "y": 723.0}, {"id": "280601000004972", "depth": 4, "bank": "Indian Overseas Bank", "short": "4972", "x": 1100, "y": 801.0}, {"id": "500101014272775", "depth": 1, "bank": "City Union Bank", "short": "2775", "x": 320, "y": 762.0}, {"id": "184100050314046", "depth": 2, "bank": "Tamilnad Mercantile Bank Ltd.", "short": "4046", "x": 580, "y": 138.0}, {"id": "35998100000940", "depth": 8, "bank": "Bank of Baroda ", "short": "0940", "x": 2140, "y": 684.0}, {"id": "911020001601490", "depth": 6, "bank": "Axis Bank", "short": "1490", "x": 1620, "y": 1074.0}, {"id": "587802010023616", "depth": 5, "bank": "Union Bank of India", "short": "3616", "x": 1360, "y": 606.0}, {"id": "9686759029", "depth": 5, "bank": "Airtel Payments Bank", "short": "9029", "x": 1360, "y": 684.0}, {"id": "50100838671819", "depth": 2, "bank": "HDFC Bank", "short": "1819", "x": 580, "y": 684.0}, {"id": "257802913194", "depth": 6, "bank": "IndusInd Bank", "short": "3194", "x": 1620, "y": 918.0}, {"id": "280601000009398", "depth": 4, "bank": "Indian Overseas Bank", "short": "9398", "x": 1100, "y": 645.0}, {"id": "259705000857", "depth": 8, "bank": "IndusInd Bank", "short": "0857", "x": 2140, "y": 762.0}, {"id": "19733211008835", "depth": 2, "bank": "UCO Bank", "short": "8835", "x": 580, "y": 450.0}, {"id": "3561410007911122", "depth": 7, "bank": "IndusInd Bank", "short": "1122", "x": 1880, "y": 957.0}, {"id": "924020043620491", "depth": 3, "bank": "Axis Bank", "short": "0491", "x": 840, "y": 918.0}, {"id": "8173374527", "depth": 2, "bank": "Indian Bank ", "short": "4527", "x": 580, "y": 528.0}, {"id": "7420169924", "depth": 2, "bank": "Indian Bank ", "short": "9924", "x": 580, "y": 606.0}, {"id": "500101014226758", "depth": 3, "bank": "City Union Bank", "short": "6758", "x": 840, "y": 294.0}, {"id": "0597010000326", "depth": 4, "bank": "Catholic Syrian Bank LTD. ", "short": "0326", "x": 1100, "y": 489.0}, {"id": "10000000016", "depth": 5, "bank": "Cashfree", "short": "0016", "x": 1360, "y": 840.0}, {"id": "3204107099", "depth": 7, "bank": "Central Bank of India", "short": "7099", "x": 1880, "y": 489.0}, {"id": "570858325937", "depth": 7, "bank": "Others", "short": "5937", "x": 1880, "y": 801.0}], "edges": [{"src": "915010034263332", "dst": "269901000009767", "layer": 1, "amt": 97230.0, "disputed": 97230.0, "date": "05/12/2025 01:51:54 PM", "remarks": "Tamilmani  Venkat", "dest_bank": "Indian Overseas Bank"}, {"src": "925010024223897", "dst": "060911991000283", "layer": 1, "amt": 400000.0, "disputed": 400000.0, "date": "17/12/2025 12:00:00 AM", "remarks": "PRAMOD,UTIBR52025121700352450", "dest_bank": "UNITY SMALL FINANCE BANK"}, {"src": "915010034263332", "dst": "2502270597178842", "layer": 1, "amt": 98375.0, "disputed": 98375.0, "date": "02/01/2026 03:41:44 PM", "remarks": "null", "dest_bank": "AU Bank"}, {"src": "915010034263332", "dst": "2502270597178842", "layer": 1, "amt": 97416.0, "disputed": 97416.0, "date": "02/01/2026 03:27:41 PM", "remarks": "Bank Account XXXXXXXXXXXX8842", "dest_bank": "AU Bank"}, {"src": "915010034263332", "dst": "2334102000001274", "layer": 1, "amt": 3200000.0, "disputed": 3200000.0, "date": "06/01/2026 12:00:00 AM", "remarks": "ANANT TRADING,UTIBR52026010600351279", "dest_bank": "IDBI Bank"}, {"src": "925010024223897", "dst": "2334102000001274", "layer": 1, "amt": 1000000.0, "disputed": 1000000.0, "date": "26/12/2025 12:00:00 AM", "remarks": "ANANT TRADING,UTIBR52025122600361653", "dest_bank": "IDBI Bank"}, {"src": "915010034263332", "dst": "269901000009767", "layer": 1, "amt": 97415.0, "disputed": 97415.0, "date": "03/12/2025 01:26:47 PM", "remarks": "Tamilmani  Venkat", "dest_bank": "Indian Overseas Bank"}, {"src": "915010034263332", "dst": "500101014272775", "layer": 1, "amt": 97230.0, "disputed": 97230.0, "date": "05/12/2025 02:10:46 PM", "remarks": "Mr. DHANUSH  M", "dest_bank": "City Union Bank"}, {"src": "925010024223897", "dst": "060911991000283", "layer": 1, "amt": 400000.0, "disputed": 400000.0, "date": "17/12/2025 12:00:00 AM", "remarks": "PRAMOD,UTIBR52025121700352475", "dest_bank": "UNITY SMALL FINANCE BANK"}, {"src": "95252200043287", "dst": "2433101003606", "layer": 1, "amt": 100000.0, "disputed": 100000.0, "date": "29/12/2025 07:02:22 PM", "remarks": "UPI-335571439244-2025-12-29 19:02:22.235", "dest_bank": "Canara Bank "}, {"src": "2502270597178842", "dst": "139261900001410", "layer": 2, "amt": 100000.0, "disputed": 47416.0, "date": "02/01/2026 03:37:14 PM", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in.", "dest_bank": "Yes Bank"}, {"src": "2334102000001274", "dst": "252020252520", "layer": 2, "amt": 5000000.0, "disputed": 3200000.0, "date": "06/01/2026 12:45:56 PM", "remarks": "IPAY/INST/RTGS/029682753801/252020252520/KOTHARI D", "dest_bank": "IndusInd Bank"}, {"src": "915010034263332", "dst": "248802000000769", "layer": 1, "amt": 96761.0, "disputed": 96761.0, "date": "23/12/2025 04:15:22 PM", "remarks": "RAJESH MURUGAN", "dest_bank": "Indian Overseas Bank"}, {"src": "915010034263332", "dst": "1183172000009635", "layer": 1, "amt": 96804.0, "disputed": 96804.0, "date": "23/12/2025 03:37:09 PM", "remarks": "Bank Account XXXXXXXXXXXX9635", "dest_bank": "Karur Vysya Bank"}, {"src": "2334102000001274", "dst": "925020033132422", "layer": 2, "amt": 2500000.0, "disputed": 1000000.0, "date": "26/12/2025 03:12:13 PM", "remarks": "IPAY/INST/RTGS/029666721041/925020033132422/KOTHAR", "dest_bank": "Axis Bank"}, {"src": "1183172000009635", "dst": "184100050314046", "layer": 2, "amt": 50000.0, "disputed": 50000.0, "date": "23/12/2025 03:39:30 PM", "remarks": "SUCCESS", "dest_bank": "Tamilnad Mercantile Bank Ltd."}, {"src": "1183172000009635", "dst": "184100050600349", "layer": 2, "amt": 50000.0, "disputed": 46802.0, "date": "23/12/2025 03:39:55 PM", "remarks": "SUCCESS", "dest_bank": "Tamilnad Mercantile Bank Ltd."}, {"src": "248802000000769", "dst": "50100838671819", "layer": 2, "amt": 850000.0, "disputed": 56113.77, "date": "29/12/2025 12:00:00 AM", "remarks": "Available Balance :647.23", "dest_bank": "HDFC Bank"}, {"src": "500101014272775", "dst": "025161900002702", "layer": 2, "amt": 4000.0, "disputed": 4000.0, "date": "05/12/2025 02:13:00 PM", "remarks": null, "dest_bank": "Yes Bank"}, {"src": "500101014272775", "dst": "50100380080920", "layer": 2, "amt": 40000.0, "disputed": 34730.0, "date": "05/12/2025 02:44:00 PM", "remarks": null, "dest_bank": "HDFC Bank"}, {"src": "500101014272775", "dst": "008100050600566", "layer": 2, "amt": 9000.0, "disputed": 9000.0, "date": "05/12/2025 02:24:00 PM", "remarks": null, "dest_bank": "Tamilnad Mercantile Bank Ltd."}, {"src": "500101014272775", "dst": "280601000012946", "layer": 2, "amt": 50000.0, "disputed": 49500.0, "date": "05/12/2025 02:12:00 PM", "remarks": null, "dest_bank": "Indian Overseas Bank"}, {"src": "95252200043287", "dst": "0825001500006982", "layer": 1, "amt": 1250000.0, "disputed": 1250000.0, "date": "09/01/2026 12:00:00 AM", "remarks": null, "dest_bank": "Punjab National Bank "}, {"src": "2502270597178842", "dst": "139261900001410", "layer": 2, "amt": 70000.0, "disputed": 68375.0, "date": "02/01/2026 06:27:00 PM", "remarks": "Correct UTR UTIBN62026010248018786, Necessary steps have been applied on the said account. For further information, please reach out to us a", "dest_bank": "Yes Bank"}, {"src": "2502270597178842", "dst": "139261900001410", "layer": 2, "amt": 30000.0, "disputed": 30000.0, "date": "02/01/2026 06:25:00 PM", "remarks": "Correct UTR UTIBN62026010248018786, Necessary steps have been applied on the said account. For further information, please reach out to us a", "dest_bank": "Yes Bank"}, {"src": "50100380080920", "dst": "7755965625", "layer": 3, "amt": 5000.0, "disputed": 5000.0, "date": "06/12/2025 12:00:00 PM", "remarks": "UPI-JAYESH SANJAY PATIL-jayeshhh.patil@ybl-AIRP0000001-967893908491-Payment from Phone", "dest_bank": "Airtel Payments Bank"}, {"src": "50100380080920", "dst": "7755965625", "layer": 3, "amt": 3000.0, "disputed": 3000.0, "date": "06/12/2025 12:00:00 PM", "remarks": "UPI-JAYESH SANJAY PATIL-jp775596-4@oksbi-AIRP0000001-570695522083-UPI", "dest_bank": "Airtel Payments Bank"}, {"src": "50100380080920", "dst": "7755965625", "layer": 3, "amt": 11500.0, "disputed": 11500.0, "date": "07/12/2025 12:00:00 PM", "remarks": "UPI-JAYESH SANJAY PATIL-jp775596-4@oksbi-AIRP0000001-570731878991-UPI", "dest_bank": "Airtel Payments Bank"}, {"src": "50100380080920", "dst": "7755965625", "layer": 3, "amt": 16000.0, "disputed": 3589.38, "date": "09/12/2025 12:00:00 PM", "remarks": "UPI-JAYESH SANJAY PATIL-jp775596-4@oksbi-AIRP0000001-534364356998-UPI", "dest_bank": "Airtel Payments Bank"}, {"src": "50100380080920", "dst": "1238010002089", "layer": 3, "amt": 2000.0, "disputed": 2000.0, "date": "07/12/2025 12:00:00 PM", "remarks": "UPI-DEVI-8610789192@pthdfc-CSBK0001238-846816457009-Payment from Phone", "dest_bank": "Catholic Syrian Bank LTD. "}, {"src": "50100380080920", "dst": "211074071", "layer": 3, "amt": 1000.0, "disputed": 1000.0, "date": "06/12/2025 12:00:00 PM", "remarks": "UPI-S K TEXTILES CORNER-yespay.mabs.0251619ikit2702.ter3@yesbankltd-YESB0YESUPI-896646293186-Payment from Phone", "dest_bank": "Others"}, {"src": "0825001500006982", "dst": "44249016396", "layer": 2, "amt": 250000.0, "disputed": 250000.0, "date": "13/01/2026 04:37:16 PM", "remarks": "000634443074", "dest_bank": "State Bank of India"}, {"src": "280601000012946", "dst": "280601000012964", "layer": 3, "amt": 2000.0, "disputed": 2000.0, "date": "06/12/2025 09:40:01 AM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012946", "dst": "280601000000845", "layer": 3, "amt": 3000.0, "disputed": 3000.0, "date": "07/12/2025 10:06:47 AM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012946", "dst": "280601000012964", "layer": 3, "amt": 25000.0, "disputed": 25000.0, "date": "07/12/2025 05:57:05 PM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012946", "dst": "280601000012964", "layer": 3, "amt": 35000.0, "disputed": 14873.75, "date": "08/12/2025 10:17:31 AM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012946", "dst": "280601000012964", "layer": 3, "amt": 1000.0, "disputed": 1000.0, "date": "08/12/2025 10:31:43 AM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012946", "dst": "280601000012964", "layer": 3, "amt": 2000.0, "disputed": 2000.0, "date": "06/12/2025 09:39:30 AM", "remarks": "Available Balance :804.25", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000000845", "dst": "280601000009398", "layer": 4, "amt": 2800.0, "disputed": 2603.49, "date": "07/12/2025 10:24:58 AM", "remarks": "Available Balance :396.51", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012964", "dst": "6148494781", "layer": 4, "amt": 500.0, "disputed": 500.0, "date": "07/12/2025 10:43:20 PM", "remarks": "Available Balance :0", "dest_bank": "Indian Bank "}, {"src": "280601000012964", "dst": "280601000004972", "layer": 4, "amt": 50000.0, "disputed": 24400.0, "date": "08/12/2025 11:06:41 AM", "remarks": "Available Balance :0", "dest_bank": "Indian Overseas Bank"}, {"src": "280601000012964", "dst": "280601000004972", "layer": 4, "amt": 50000.0, "disputed": 14873.75, "date": "08/12/2025 11:06:41 AM", "remarks": "Available Balance :0", "dest_bank": "Indian Overseas Bank"}, {"src": "252020252520", "dst": "924020043620491", "layer": 3, "amt": 2499500.0, "disputed": 700000.0, "date": "06/01/2026 12:00:00 AM", "remarks": null, "dest_bank": "Axis Bank"}, {"src": "252020252520", "dst": "924020043620491", "layer": 3, "amt": 2500000.0, "disputed": 2500000.0, "date": "06/01/2026 12:00:00 AM", "remarks": null, "dest_bank": "Axis Bank"}, {"src": "924020043620491", "dst": "201002579451", "layer": 4, "amt": 7500000.0, "disputed": 700000.0, "date": "06/01/2026 12:00:00 AM", "remarks": "SUVIDHA STONE LLP,UTIBR62026010648284343", "dest_bank": "IndusInd Bank"}, {"src": "924020043620491", "dst": "201002579451", "layer": 4, "amt": 6400000.0, "disputed": 2392642.09, "date": "06/01/2026 12:00:00 AM", "remarks": "SUVIDHA STONE LLP,UTIBR62026010648285456", "dest_bank": "IndusInd Bank"}, {"src": "925020033132422", "dst": "074604998501195001", "layer": 3, "amt": 2496000.0, "disputed": 1000000.0, "date": "26/12/2025 12:00:00 AM", "remarks": "RTGS/DH/UTIBR62025122646093869/KARTIKEY GEMS AND J", "dest_bank": "Catholic Syrian Bank LTD. "}, {"src": "074604998501195001", "dst": "924020042501050", "layer": 4, "amt": 2500000.0, "disputed": 979000.0, "date": "26/12/2025 04:08:00 PM", "remarks": "RTGS DR-CSBKR12025122611502157-MANTHAN DIA GEM LLP-UTIB0002640-FCCOREIND", "dest_bank": "Axis Bank"}, {"src": "924020042501050", "dst": "2502213266592846", "layer": 5, "amt": 1500000.0, "disputed": 979000.0, "date": "26/12/2025 08:35:00 PM", "remarks": "MANTHAN DIA GEM LLP UTIBR62025122646221189", "dest_bank": "AU Bank"}, {"src": "2502213266592846", "dst": "409723022539", "layer": 6, "amt": 330507.0, "disputed": 330507.0, "date": "26/12/2025 10:08:47 PM", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in.", "dest_bank": "Ratnakar Bank Limited "}, {"src": "2502213266592846", "dst": "257802913194", "layer": 6, "amt": 1400000.0, "disputed": 437019.66, "date": "27/12/2025 12:57:52 PM", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in.", "dest_bank": "IndusInd Bank"}, {"src": "257802913194", "dst": "344905003219", "layer": 7, "amt": 2400000.0, "disputed": 437019.66, "date": "27/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "ICICI Bank"}, {"src": "060911991000283", "dst": "395201000000432", "layer": 2, "amt": 99999.0, "disputed": 7664.0, "date": "17/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "Indian Overseas Bank"}, {"src": "060911991000283", "dst": "925020009451810", "layer": 2, "amt": 200001.0, "disputed": 200001.0, "date": "17/12/2025 12:00:00 AM", "remarks": "UNBAR25351000902", "dest_bank": "Axis Bank"}, {"src": "060911991000283", "dst": "925020009451810", "layer": 2, "amt": 615000.0, "disputed": 592335.0, "date": "17/12/2025 12:00:00 AM", "remarks": "UNBAR25351000874", "dest_bank": "Axis Bank"}, {"src": "344905003219", "dst": "259705000857", "layer": 8, "amt": 3300000.0, "disputed": 434736.42, "date": "27/12/2025 01:14:43 PM", "remarks": "NA", "dest_bank": "IndusInd Bank"}, {"src": "280601000009398", "dst": "10000000016", "layer": 5, "amt": 628.15, "disputed": 628.15, "date": "07/12/2025 09:24:00 PM", "remarks": null, "dest_bank": "NSDL Payments Bank Ltd"}, {"src": "269901000009767", "dst": "19733211008842", "layer": 2, "amt": 20000.0, "disputed": 20000.0, "date": "03/12/2025 09:33:00 PM", "remarks": null, "dest_bank": "UCO Bank"}, {"src": "269901000009767", "dst": "19733211008835", "layer": 2, "amt": 20000.0, "disputed": 20000.0, "date": "03/12/2025 09:32:00 PM", "remarks": null, "dest_bank": "UCO Bank"}, {"src": "269901000009767", "dst": "8173374527", "layer": 2, "amt": 25000.0, "disputed": 25000.0, "date": "04/12/2025 09:34:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "269901000009767", "dst": "8174278469", "layer": 2, "amt": 25000.0, "disputed": 2415.0, "date": "04/12/2025 09:35:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "269901000009767", "dst": "8179321433", "layer": 2, "amt": 100000.0, "disputed": 2230.0, "date": "05/12/2025 09:44:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "269901000009767", "dst": "7420169924", "layer": 2, "amt": 25000.0, "disputed": 25000.0, "date": "05/12/2025 09:42:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "269901000009767", "dst": "7420169924", "layer": 2, "amt": 25000.0, "disputed": 25000.0, "date": "05/12/2025 09:43:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "259705000857", "dst": "339705000857", "layer": 9, "amt": 2500000.0, "disputed": 434736.42, "date": "27/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "ICICI Bank"}, {"src": "10000000016", "dst": "10000000016", "layer": 6, "amt": 628.15, "disputed": 628.15, "date": "07/12/2025 03:42:00 AM", "remarks": null, "dest_bank": "Cashfree"}, {"src": "280601000004972", "dst": "2301262051096450", "layer": 5, "amt": 30000.0, "disputed": 14862.0, "date": "08/12/2025 06:40:00 AM", "remarks": null, "dest_bank": "AU Bank"}, {"src": "280601000004972", "dst": "2301262051096450", "layer": 5, "amt": 30000.0, "disputed": 24400.0, "date": "08/12/2025 10:03:00 AM", "remarks": null, "dest_bank": "AU Bank"}, {"src": "2301262051096450", "dst": "005001001824995", "layer": 6, "amt": 10000.0, "disputed": 9400.0, "date": "08/12/2025 11:01:00 AM", "remarks": null, "dest_bank": "City Union Bank"}, {"src": "2301262051096450", "dst": "005001001824995", "layer": 6, "amt": 15000.0, "disputed": 15000.0, "date": "08/12/2025 11:01:00 AM", "remarks": null, "dest_bank": "City Union Bank"}, {"src": "005001001824995", "dst": "570858325937", "layer": 7, "amt": 83321.0, "disputed": 9400.0, "date": "09/12/2025 12:00:00 AM", "remarks": "-", "dest_bank": "Others"}, {"src": "005001001824995", "dst": "570839513540", "layer": 7, "amt": 83321.0, "disputed": 15000.0, "date": "09/12/2025 12:00:00 AM", "remarks": "-", "dest_bank": "Others"}, {"src": "44249016396", "dst": "1811222020842426", "layer": 3, "amt": 100000.0, "disputed": 100000.0, "date": "18/01/2026 07:22:00 PM", "remarks": "SBIN526018069821", "dest_bank": "AU Bank"}, {"src": "44249016396", "dst": "1811222020842426", "layer": 3, "amt": 100000.0, "disputed": 55476.0, "date": "18/01/2026 08:45:00 PM", "remarks": "imps", "dest_bank": "AU Bank"}, {"src": "44249016396", "dst": "684551203128", "layer": 3, "amt": 94524.0, "disputed": 94524.0, "date": "16/01/2026 11:05:00 AM", "remarks": "SBIN326016044794", "dest_bank": "ICICI Bank"}, {"src": "10000000016", "dst": "NA", "layer": 7, "amt": 628.15, "disputed": 628.15, "date": "07/12/2025 03:42:00 AM", "remarks": "mpokket-I1584c567f4484404c89d240f-1", "dest_bank": "Others"}, {"src": "1811222020842426", "dst": "002261100000025", "layer": 4, "amt": 50000.0, "disputed": 50000.0, "date": "19/01/2026 10:17:00 AM", "remarks": null, "dest_bank": "Yes Bank"}, {"src": "1811222020842426", "dst": "08110100013440", "layer": 4, "amt": 52000.0, "disputed": 5476.0, "date": "19/01/2026 11:11:00 AM", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in.", "dest_bank": "Bank of Baroda "}, {"src": "1811222020842426", "dst": "002261100000025", "layer": 4, "amt": 100000.0, "disputed": 100000.0, "date": "18/01/2026 07:32:00 PM", "remarks": null, "dest_bank": "Yes Bank"}, {"src": "002261100000025", "dst": "002261100000025", "layer": 5, "amt": 50000.0, "disputed": 50000.0, "date": "19/01/2026 10:17:00 AM", "remarks": null, "dest_bank": "PhonePe"}, {"src": "002261100000025", "dst": "002261100000025", "layer": 5, "amt": 100000.0, "disputed": 100000.0, "date": "18/01/2026 07:32:00 PM", "remarks": null, "dest_bank": "PhonePe"}, {"src": "50100380080920", "dst": "82141900035646", "layer": 3, "amt": 5000.0, "disputed": 5000.0, "date": "06/12/2025 12:00:00 AM", "remarks": "UPI-RINKU-9813070079@nyes-PUNB0HGB001-528427909408-Payment from Phone", "dest_bank": "Sarva Haryana Gramin Bank "}, {"src": "82141900035646", "dst": "50200093038670", "layer": 4, "amt": 81000.0, "disputed": 5000.0, "date": "06/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "HDFC Bank"}, {"src": "50200093038670", "dst": "925010017216208", "layer": 5, "amt": 100000.0, "disputed": 5000.0, "date": "06/12/2025 12:00:00 PM", "remarks": "IMPS-534016937576-Sandeep axis saving-UTIB-xxxxxxxxxxx6208-", "dest_bank": "Axis Bank"}, {"src": "7755965625", "dst": "239001531610", "layer": 4, "amt": 11500.0, "disputed": 11500.0, "date": "07/12/2025 04:55:00 AM", "remarks": "jp71037622@ybl", "dest_bank": "ICICI Bank"}, {"src": "7755965625", "dst": "239001531610", "layer": 4, "amt": 16000.0, "disputed": 3589.38, "date": "10/12/2025 12:00:00 AM", "remarks": "jp775596-2@okaxis", "dest_bank": "ICICI Bank"}, {"src": "7755965625", "dst": "00000035850158957", "layer": 4, "amt": 5000.0, "disputed": 5000.0, "date": "06/12/2025 06:08:00 PM", "remarks": "9096588820@ybl", "dest_bank": "State Bank of India"}, {"src": "7755965625", "dst": "0597010000326", "layer": 4, "amt": 3000.0, "disputed": 3000.0, "date": "06/12/2025 05:23:00 PM", "remarks": "hunkhari2-4@okicici", "dest_bank": "Catholic Syrian Bank LTD. "}, {"src": "239001531610", "dst": "587802010023616", "layer": 5, "amt": 3300.0, "disputed": 3300.0, "date": "07/12/2025 02:41:32 PM", "remarks": "NA", "dest_bank": "Union Bank of India"}, {"src": "239001531610", "dst": "7755965625", "layer": 5, "amt": 5000.0, "disputed": 4777.87, "date": "07/12/2025 06:34:58 PM", "remarks": "NA", "dest_bank": "Airtel Payments Bank"}, {"src": "239001531610", "dst": "50100380080920", "layer": 5, "amt": 2000.0, "disputed": 2000.0, "date": "07/12/2025 06:34:50 AM", "remarks": "NA", "dest_bank": "HDFC Bank"}, {"src": "239001531610", "dst": "7755965625", "layer": 5, "amt": 500.0, "disputed": 500.0, "date": "07/12/2025 11:00:08 AM", "remarks": "NA", "dest_bank": "Airtel Payments Bank"}, {"src": "7755965625", "dst": "4750881278", "layer": 6, "amt": 2000.0, "disputed": 500.0, "date": "07/12/2025 02:59:10 PM", "remarks": null, "dest_bank": "Kotak Mahindra Bank"}, {"src": "50100380080920", "dst": "7755965625", "layer": 6, "amt": 11500.0, "disputed": 2000.0, "date": "07/12/2025 12:00:00 PM", "remarks": "UPI-JAYESH SANJAY PATIL-jp775596-4@oksbi-AIRP0000001-570731878991-UPI", "dest_bank": "Airtel Payments Bank"}, {"src": "7755965625", "dst": "29960210003664", "layer": 6, "amt": 5000.0, "disputed": 4777.87, "date": "07/12/2025 06:35:20 PM", "remarks": null, "dest_bank": "UCO Bank"}, {"src": "4750881278", "dst": "60077844857", "layer": 7, "amt": 2000.0, "disputed": 500.0, "date": "07/12/2025 03:01:09 PM", "remarks": "UPI/DUMMY NAME/534156031398/UPI", "dest_bank": "Bank of Maharashtra"}, {"src": "7755965625", "dst": "239001531610", "layer": 7, "amt": 11500.0, "disputed": 2000.0, "date": "07/12/2025 04:55:25 AM", "remarks": null, "dest_bank": "ICICI Bank"}, {"src": "29960210003664", "dst": "3204107099", "layer": 7, "amt": 50008.85, "disputed": 4777.87, "date": "08/12/2025 01:48:52 PM", "remarks": null, "dest_bank": "Central Bank of India"}, {"src": "60077844857", "dst": "35998100000940", "layer": 8, "amt": 3000.0, "disputed": 449.3, "date": "09/12/2025 10:53:42 AM", "remarks": "UPI Transactions", "dest_bank": "Bank of Baroda "}, {"src": "0597010000326", "dst": "9686759029", "layer": 5, "amt": 4000.0, "disputed": 3000.0, "date": "06/12/2025 07:58:00 PM", "remarks": "venu4792837@okicici", "dest_bank": "Airtel Payments Bank"}, {"src": "9686759029", "dst": "0636252400002201", "layer": 6, "amt": 700.0, "disputed": 700.0, "date": "07/12/2025 11:33:09 AM", "remarks": null, "dest_bank": "Karnataka Bank Ltd"}, {"src": "9686759029", "dst": "50100596894694", "layer": 6, "amt": 6000.0, "disputed": 2081.8, "date": "07/12/2025 08:34:30 PM", "remarks": null, "dest_bank": "HDFC Bank"}, {"src": "9686759029", "dst": "50100596894694", "layer": 6, "amt": 6000.0, "disputed": 3000.0, "date": "07/12/2025 06:17:00 PM", "remarks": null, "dest_bank": "HDFC Bank"}, {"src": "239001531610", "dst": "60318954042", "layer": 5, "amt": 22550.0, "disputed": 3589.0, "date": "31/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "Bank of Maharashtra"}, {"src": "002261100000025", "dst": "XXXXXXXXXXXX1122", "layer": 6, "amt": 100000.0, "disputed": 100000.0, "date": "18/01/2026 06:25:00 PM", "remarks": "T2601181932196390141742. The transaction is made towards CC - XXXXXXXXXXXX1122 bill payment via payment aggregator BBPS and the BBPS bill pa", "dest_bank": "IndusInd Bank"}, {"src": "002261100000025", "dst": "XXXXXXXXXXXX1122", "layer": 6, "amt": 50000.0, "disputed": 50000.0, "date": "19/01/2026 06:26:00 PM", "remarks": "T2601191017190745771694. The transaction is made towards CC - XXXXXXXXXXXX1122 bill payment via payment aggregator BBPS and the BBPS bill pa", "dest_bank": "IndusInd Bank"}, {"src": "280601000012964", "dst": "002261100000025", "layer": 4, "amt": 651.0, "disputed": 651.0, "date": "08/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "Yes Bank"}, {"src": "002261100000025", "dst": "002261100000025", "layer": 5, "amt": 651.0, "disputed": 651.0, "date": "08/12/2025 12:00:00 AM", "remarks": null, "dest_bank": "PhonePe"}, {"src": "002261100000025", "dst": "911020001601490", "layer": 6, "amt": 651.0, "disputed": 651.0, "date": "09/12/2025 12:00:00 AM", "remarks": "T2512082236132192255868, the information shared pertains to the settlement made to the merchants account. The amount shown in the Transactio", "dest_bank": "Axis Bank"}, {"src": "925020009451810", "dst": "073361900002584", "layer": 3, "amt": 499999.0, "disputed": 499999.0, "date": "17/12/2025 12:00:00 AM", "remarks": "End to End - UTIBR62025121744156683 , Preventive lien marked of Rs 7,92,336", "dest_bank": "Yes Bank"}, {"src": "925020009451810", "dst": "200003028944", "layer": 3, "amt": 500886.0, "disputed": 292337.0, "date": "17/12/2025 12:00:00 AM", "remarks": "Preventive lien marked of Rs 7,92,336 , End to End - UTIBR62025121744168511", "dest_bank": "Equitas Bank"}, {"src": "911020001601490", "dst": "9901068100088", "layer": 7, "amt": 350000.0, "disputed": 651.0, "date": "12/12/2025 12:00:00 AM", "remarks": "Miniso lifestyle", "dest_bank": "Standard Chartered Bank"}, {"src": "139261900001410", "dst": "500101014226758", "layer": 3, "amt": 20000.0, "disputed": 8375.0, "date": "02/01/2026 07:20:00 PM", "remarks": null, "dest_bank": "City Union Bank"}, {"src": "139261900001410", "dst": "8148064627", "layer": 3, "amt": 20000.0, "disputed": 20000.0, "date": "02/01/2026 06:39:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "139261900001410", "dst": "500101014226758", "layer": 3, "amt": 20000.0, "disputed": 20000.0, "date": "02/01/2026 07:18:00 PM", "remarks": null, "dest_bank": "City Union Bank"}, {"src": "139261900001410", "dst": "8148064627", "layer": 3, "amt": 20000.0, "disputed": 20000.0, "date": "02/01/2026 06:41:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "139261900001410", "dst": "500101014226758", "layer": 3, "amt": 20000.0, "disputed": 20000.0, "date": "02/01/2026 07:17:00 PM", "remarks": null, "dest_bank": "City Union Bank"}, {"src": "139261900001410", "dst": "8148064627", "layer": 3, "amt": 10000.0, "disputed": 10000.0, "date": "02/01/2026 06:42:00 PM", "remarks": null, "dest_bank": "Indian Bank "}, {"src": "9901068100088", "dst": "245105000500", "layer": 8, "amt": 50000000.0, "disputed": 651.0, "date": "12/12/2025 03:07:00 PM", "remarks": "PIGIN00879A20015 MINISO LIFE STYLE PVT LTD -ICICI ICICI GURGAON GUR SCBLR12025121200811183 RTGS ICIC0002451", "dest_bank": "ICICI Bank"}, {"src": "073361900002584", "dst": "1gopay8700466713", "layer": 4, "amt": 502000.0, "disputed": 499999.0, "date": "17/12/2025 01:11:00 PM", "remarks": "YIB-RTGS-YESBR12025121700021640-GO PAY DIGITAL WORLD PRIVATE LIMITED-HDFC0003676-RTGS-HDFC BANK", "dest_bank": "HDFC Bank"}, {"src": "025161900002702", "dst": "008100050600566", "layer": 3, "amt": 10000.0, "disputed": 4000.0, "date": "05/12/2025 02:23:00 PM", "remarks": "IMPS/NA/XXXX0566/RRN:533980027875/PC221781743402073/TAMILNAD MERCANTILE BANK LIMITED/SARANYA/IFB", "dest_bank": "Tamilnad Mercantile Bank Ltd."}, {"src": "280601000012946", "dst": "001425000000051", "layer": 3, "amt": 1886.0, "disputed": 622.0, "date": "26/01/2026 12:00:00 AM", "remarks": null, "dest_bank": "Yes Bank"}, {"src": "XXXXXXXXXXXX1122", "dst": "3561410007911122", "layer": 7, "amt": 50000.0, "disputed": 50000.0, "date": "19/01/2026 06:26:00 PM", "remarks": "WE CONFIRM THE PAYMENT OF INR 50000 RECEIVED ON 19-01-2026 3561410007911122 HELD BY RAM SINGH THE PAYMENT RECEIVED HAVE BEEN FURTHER UTILISE", "dest_bank": "IndusInd Bank"}, {"src": "XXXXXXXXXXXX1122", "dst": "3561410007911122", "layer": 7, "amt": 100000.0, "disputed": 100000.0, "date": "18/01/2026 06:25:00 PM", "remarks": "WE CONFIRM THE PAYMENT OF INR 100000 RECEIVED ON 18-01-2026 3561410007911122 HELD BY RAM SINGH THE PAYMENT RECEIVED HAVE BEEN FURTHER UTILIS", "dest_bank": "IndusInd Bank"}], "canvas_w": 2760, "canvas_h": 1602};
-const WITHDRAWALS = {"1183172000009635": {"atm": 0.0, "hold": 2.0, "cheque": 0.0}, "280601000012964": {"atm": 7000.0, "hold": 21.63, "cheque": 0.0}, "6148494781": {"atm": 0.0, "hold": 187.17, "cheque": 0.0}, "184100050600349": {"atm": 50000.0, "hold": 296.04, "cheque": 0.0}, "008100050600566": {"atm": 20054.28, "hold": 6096.85, "cheque": 0.0}, "1238010002089": {"atm": 10000.0, "hold": 0.0, "cheque": 0.0}, "60077844857": {"atm": 0.0, "hold": 20.7, "cheque": 0.0}, "344905003219": {"atm": 0.0, "hold": 2283.24, "cheque": 0.0}, "280601000000845": {"atm": 0.0, "hold": 396.51, "cheque": 0.0}, "500101014226758": {"atm": 100000.0, "hold": 0.0, "cheque": 0.0}, "684551203128": {"atm": 0.0, "hold": 94524.0, "cheque": 0.0}, "280601000009398": {"atm": 0.0, "hold": 1027.0, "cheque": 0.0}, "395201000000432": {"atm": 0.0, "hold": 7664.0, "cheque": 0.0}, "339705000857": {"atm": 0.0, "hold": 434736.42, "cheque": 0.0}, "184100050314046": {"atm": 50000.0, "hold": 243.2, "cheque": 0.0}, "19733211008842": {"atm": 20000.0, "hold": 4.0, "cheque": 0.0}, "9686759029": {"atm": 0.0, "hold": 112.2, "cheque": 0.0}, "925010017216208": {"atm": 20000.0, "hold": 0.0, "cheque": 0.0}, "239001531610": {"atm": 0.0, "hold": 87.13, "cheque": 0.0}, "1gopay8700466713": {"atm": 0.0, "hold": 499999.0, "cheque": 0.0}, "50100380080920": {"atm": 0.0, "hold": 3467.62, "cheque": 0.0}, "269901000009767": {"atm": 75000.0, "hold": 0.0, "cheque": 0.0}, "0636252400002201": {"atm": 0.0, "hold": 700.0, "cheque": 0.0}, "8174278469": {"atm": 10000.0, "hold": 204.0, "cheque": 0.0}, "587802010023616": {"atm": 0.0, "hold": 3300.0, "cheque": 0.0}, "2502213266592846": {"atm": 0.0, "hold": 211473.34, "cheque": 0.0}, "8173374527": {"atm": 25000.0, "hold": 64.0, "cheque": 0.0}, "280601000012946": {"atm": 0.0, "hold": 804.25, "cheque": 0.0}, "280601000004972": {"atm": 0.0, "hold": 11.0, "cheque": 0.0}, "50100596894694": {"atm": 0.0, "hold": 5081.8, "cheque": 0.0}, "2301262051096450": {"atm": 0.0, "hold": 14862.0, "cheque": 0.0}, "35998100000940": {"atm": 0.0, "hold": 449.3, "cheque": 0.0}, "8148064627": {"atm": 50000.0, "hold": 0.0, "cheque": 0.0}, "08110100013440": {"atm": 0.0, "hold": 10952.0, "cheque": 0.0}, "50100838671819": {"atm": 30000.0, "hold": 0.0, "cheque": 200000.0}, "074604998501195001": {"atm": 0.0, "hold": 21000.0, "cheque": 0.0}, "7420169924": {"atm": 60000.0, "hold": 20.0, "cheque": 0.0}, "924020043620491": {"atm": 0.0, "hold": 107357.91, "cheque": 0.0}, "4750881278": {"atm": 0.0, "hold": 2.41, "cheque": 0.0}, "248802000000769": {"atm": 20000.0, "hold": 647.23, "cheque": 0.0}, "409723022539": {"atm": 0.0, "hold": 285647.0, "cheque": 0.0}, "00000035850158957": {"atm": 0.0, "hold": 5000.0, "cheque": 0.0}, "19733211008835": {"atm": 0.0, "hold": 20000.0, "cheque": 0.0}, "3204107099": {"atm": 0.0, "hold": 394.23, "cheque": 0.0}, "0825001500006982": {"atm": 0.0, "hold": 22147.38, "cheque": 1500000.0}, "8179321433": {"atm": 20000.0, "hold": 288.0, "cheque": 0.0}, "139261900001410": {"atm": 50000.0, "hold": 0.0, "cheque": 0.0}, "60318954042": {"atm": 0.0, "hold": 3589.0, "cheque": 0.0}, "2502270597178842": {"atm": 50000.0, "hold": 0.0, "cheque": 0.0}, "200003028944": {"atm": 0.0, "hold": 292337.0, "cheque": 0.0}, "257802913194": {"atm": 0.0, "hold": 437019.66, "cheque": 0.0}};
-const WITHDRAWAL_TXNS = {"280601000012964": {"atm": [{"date": "06/12/2025 00:00:AM", "amt": 3500.0, "disputed": 1578.37, "atm_id": " ATM ID :-IOBC1500", "place": "Place of ATM :-LALPETTAI PONDICHERRY  CUDDALORE    TNIN", "remarks": "Available Balance :21.63"}, {"date": "06/12/2025 00:00:AM", "amt": 3500.0, "disputed": 1600.0, "atm_id": " ATM ID :-IOBC1500", "place": "Place of ATM :-LALPETTAI PONDICHERRY  CUDDALORE    TNIN", "remarks": "Available Balance :0"}]}, "8174278469": {"atm": [{"date": "04/12/2025 12:04:PM", "amt": 10000.0, "disputed": 2211.0, "atm_id": " ATM ID :-00908037", "place": "Place of ATM :-PARAMAKUDI 2ND OFFSITE PARAMAKUDI IN", "remarks": "TRAN DATE -(MMDD) 1204  TRAN TIME -(HHMMSS) 120449/SELF-PARAMAKUDI 2ND OFFSITE PARAMAKUDI IN/ATM WDL SEQ NO 533812006443 ATM ID 00908037 /BRANCH :  TIRUPPUR"}]}, "0825001500006982": {"cheque": [{"date": "15/01/2026 13:04:PM", "amt": 500000.0, "disputed": 29.21, "cheque_no": 28033, "branch": "PUSHKAR DISTT. AJMER PUSHKAR", "remarks": "NULL"}, {"date": "13/01/2026 13:00:PM", "amt": 1000000.0, "disputed": 977823.41, "cheque_no": 28031, "branch": "PUSHKAR DISTT. AJMER PUSHKAR", "remarks": "NULL"}]}, "925010017216208": {"atm": [{"date": "06/12/2025 17:00:PM", "amt": 20000.0, "disputed": 5000.0, "atm_id": " ATM ID :-DERH522301", "place": "Place of ATM :-HISAR", "remarks": "ATM-CASH-AXIS/DERH522301/8306/061225/HISAR,mobile number not furnished by account holder,PAN not furnished by account holder,Email ID not furnished by account holder"}]}, "184100050600349": {"atm": [{"date": "23/12/2025 16:21:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-TMB22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-546527-535716546527"}, {"date": "23/12/2025 16:24:PM", "amt": 10000.0, "disputed": 6505.96, "atm_id": " ATM ID :-TMB22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-548076-535716548076"}, {"date": "23/12/2025 16:22:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-TMB22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-547315-535716547315"}]}, "008100050600566": {"atm": [{"date": "05/12/2025 14:30:PM", "amt": 10027.14, "disputed": 2903.15, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-Other Bank", "remarks": "ATM-CASH-018408-533914018408"}, {"date": "05/12/2025 14:30:PM", "amt": 10027.14, "disputed": 4000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-Other Bank", "remarks": "ATM-CASH-018408-533914018408"}]}, "8148064627": {"atm": [{"date": "02/01/2026 18:41:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-IHAE011L", "place": "Place of ATM :-MADRASMEDICAL COLLEGE CHENNAI IN", "remarks": "TRAN DATE -(MMDD) 0102  TRAN TIME -(HHMMSS) 184152/SELF-+MADRASMEDICAL COLLEGE CHENNAI IN/ATM WDL SEQ NO 6296ATM ID IHAE011L /BRANCH :  ESPLANADE  BRANCH"}, {"date": "02/01/2026 18:40:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-IHAE011L", "place": "Place of ATM :-MADRASMEDICAL COLLEGE CHENNAI IN", "remarks": "TRAN DATE -(MMDD) 0102  TRAN TIME -(HHMMSS) 184004/SELF-+MADRASMEDICAL COLLEGE CHENNAI IN/ATM WDL SEQ NO 6294ATM ID IHAE011L /BRANCH :  ESPLANADE  BRANCH"}, {"date": "02/01/2026 18:42:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-IHAE011L", "place": "Place of ATM :-MADRASMEDICAL COLLEGE CHENNAI IN", "remarks": "TRAN DATE -(MMDD) 0102  TRAN TIME -(HHMMSS) 184248/SELF-+MADRASMEDICAL COLLEGE CHENNAI IN/ATM WDL SEQ NO 6298ATM ID IHAE011L /BRANCH :  ESPLANADE  BRANCH"}]}, "184100050314046": {"atm": [{"date": "23/12/2025 16:28:PM", "amt": 10000.0, "disputed": 9756.8, "atm_id": " ATM ID :-BNA22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-550482-535716550482"}, {"date": "23/12/2025 16:25:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-TMB22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-548995-535716548995"}, {"date": "23/12/2025 16:27:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-BNA22601", "place": "Place of ATM :-Door.No. 5(New)3 (Old)  Rama Iyer Street  Vandavasi  604408", "remarks": "ATM-CASH-549754-535716549754"}]}, "269901000009767": {"atm": [{"date": "03/12/2025 21:30:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-Hdfc Bank Ltd Ground Floor No 829 Railway Station Road Paramakudi Tamilnadu 623707", "remarks": "RRN 533720030414 dis amt 97415"}, {"date": "03/12/2025 21:29:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-Hdfc Bank Ltd Ground Floor No 829 Railway Station Road Paramakudi Tamilnadu 623707", "remarks": "RRN 533720030019 dis amt 97415"}, {"date": "03/12/2025 21:31:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-Hdfc Bank Ltd Ground Floor No 829 Railway Station Road Paramakudi Tamilnadu 623707", "remarks": "RRN 533720030752 dis amt 97415"}, {"date": "05/12/2025 21:38:PM", "amt": 1000.0, "disputed": 1000.0, "atm_id": " ATM ID :-CFBA000500019", "place": "Place of ATM :-PARAS ICE FACTORY WARDHAMAHARASHTRA 442001", "remarks": "RRN 533918002319 dis amt 97230"}, {"date": "05/12/2025 21:37:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-AOO01385A", "place": "Place of ATM :-3845A Bharathi Nagar WestMadurai Rameswaram RdOttapalam Junction Paramakudi 623707", "remarks": "RRN 533918002318 dis amt 97230"}, {"date": "05/12/2025 21:36:PM", "amt": 3000.0, "disputed": 3000.0, "atm_id": " ATM ID :-S1BD070287002", "place": "Place of ATM :-KANNUMAMOODU ONSITE 629170", "remarks": "RRN 533918002317 dis amt 97230"}, {"date": "06/12/2025 21:39:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-1093W039", "place": "Place of ATM :-5328D SOWKATHALI STREET AVHR SEC SCHOOL PARAMAKUDIPARAMAKUDI", "remarks": "RRN 534021032391 dis amt 97230"}, {"date": "09/12/2025 21:40:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AC0165602", "place": "Place of ATM :-SRK COMPLEX OPP TO INDIA 623707", "remarks": "RRN 534309946329 dis amt 97230"}, {"date": "06/12/2025 21:40:PM", "amt": 2000.0, "disputed": 2000.0, "atm_id": " ATM ID :-1093W039", "place": "Place of ATM :-5328D SOWKATHALI STREET AVHR SEC SCHOOL PARAMAKUDIPARAMAKUDI", "remarks": "RRN 534021032443 dis amt 97230"}, {"date": "09/12/2025 21:41:PM", "amt": 9000.0, "disputed": 9000.0, "atm_id": " ATM ID :-S1AC0165602", "place": "Place of ATM :-SRK COMPLEX OPP TO INDIA 623707", "remarks": "RRN 534309946336 dis amt 97230"}]}, "2502270597178842": {"atm": [{"date": "02/01/2026 15:33:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-+KORATTUR BRANCH       THIRUVALLUR  TNIN", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in."}, {"date": "02/01/2026 15:34:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-+KORATTUR BRANCH       THIRUVALLUR  TNIN", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in."}, {"date": "02/01/2026 15:32:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-+KORATTUR BRANCH       THIRUVALLUR  TNIN", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in."}, {"date": "02/01/2026 15:31:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-+KORATTUR BRANCH       THIRUVALLUR  TNIN", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in."}, {"date": "02/01/2026 15:35:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-DPRH1767", "place": "Place of ATM :-+KORATTUR BRANCH       THIRUVALLUR  TNIN", "remarks": "Necessary steps have been applied on the said account. For further information, please reach out to us at notice_liabilitiesops@aubank.in."}]}, "19733211008842": {"atm": [{"date": "03/12/2025 20:41:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-NFUC0000", "place": "Place of ATM :-Other BANK", "remarks": "NFUC0000/8176061973007571"}, {"date": "03/12/2025 20:42:PM", "amt": 10000.0, "disputed": 9996.0, "atm_id": " ATM ID :-NFUC0000", "place": "Place of ATM :-Other BANK", "remarks": "NFUC0000/8176061973007571"}]}, "248802000000769": {"atm": [{"date": "24/12/2025 00:00:AM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-IOBC1937", "place": "Place of ATM :-VANDVASI               TIRUVANNAMALATNIN", "remarks": "Available Balance :647.23"}]}, "50100838671819": {"atm": [{"date": "29/12/2025 17:29:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-COTNU151", "place": "Place of ATM :-TIRUVANNAMALA", "remarks": "ATW-406584XXXXXX7021-COTNU151-TIRUVANNAMALA"}, {"date": "29/12/2025 17:29:PM", "amt": 20000.0, "disputed": 20000.0, "atm_id": " ATM ID :-COTNU151", "place": "Place of ATM :-TIRUVANNAMALA", "remarks": "ATW-406584XXXXXX7021-COTNU151-TIRUVANNAMALA"}], "cheque": [{"date": "30/12/2025 12:00:PM", "amt": 200000.0, "disputed": 5903.77, "cheque_no": 1, "branch": "VANDAVASI", "remarks": "SELF - CHQ PAID - VANDAVASI"}]}, "8173374527": {"atm": [{"date": "04/12/2025 11:29:AM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-SOUTH MASI STREET  MADURAI IN", "remarks": "TRAN DATE -(MMDD) 1204  TRAN TIME -(HHMMSS) 112935/SELF-+SOUTH MASI STREET  MADURAI IN/ATM WDL SEQ NO 533811028503 ATM ID S1AWCB58 /BRANCH :  TIRUPPUR"}, {"date": "04/12/2025 11:28:AM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-SOUTH MASI STREET  MADURAI IN", "remarks": "TRAN DATE -(MMDD) 1204  TRAN TIME -(HHMMSS) 112838/SELF-+SOUTH MASI STREET  MADURAI IN/ATM WDL SEQ NO 533811028085 ATM ID S1AWCB58 /BRANCH :  TIRUPPUR"}, {"date": "04/12/2025 11:31:AM", "amt": 5000.0, "disputed": 4936.0, "atm_id": " ATM ID :-S1AWCB58", "place": "Place of ATM :-SOUTH MASI STREET  MADURAI IN", "remarks": "TRAN DATE -(MMDD) 1204  TRAN TIME -(HHMMSS) 113101/SELF-+SOUTH MASI STREET  MADURAI IN/ATM WDL SEQ NO 533811029100 ATM ID S1AWCB58 /BRANCH :  TIRUPPUR"}]}, "7420169924": {"atm": [{"date": "05/12/2025 14:32:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 143219/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533914004882 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "05/12/2025 14:33:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 143312/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533914004883 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "05/12/2025 14:34:PM", "amt": 10000.0, "disputed": 4980.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 143401/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533914004884 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "05/12/2025 14:34:PM", "amt": 10000.0, "disputed": 5020.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 143401/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533914004884 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "05/12/2025 14:34:PM", "amt": 8000.0, "disputed": 8000.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 143449/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533914004885 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "05/12/2025 17:18:PM", "amt": 10000.0, "disputed": 10000.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 171811/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 533917004910 ATM ID 48103999 /BRANCH :  THOTTANI"}, {"date": "06/12/2025 21:29:PM", "amt": 2000.0, "disputed": 1980.0, "atm_id": " ATM ID :-48103999", "place": "Place of ATM :-KARATTANGADU TIRUPPUR  TiruppurIN", "remarks": "TRAN DATE -(MMDD) 1206  TRAN TIME -(HHMMSS) 212903/SELF-KARATTANGADU TIRUPPUR  TiruppurIN/ATM WDL SEQ NO 534021006067 ATM ID 48103999 /BRANCH :  THOTTANI"}]}, "139261900001410": {"atm": [{"date": "02/01/2026 15:58:PM", "amt": 50000.0, "disputed": 47416.0, "atm_id": " ATM ID :-MUGGAPPAIR1", "place": "Place of ATM :-YBL MUGGAPPAIR1 CHENNAI TNIN", "remarks": "DA 47416"}]}, "8179321433": {"atm": [{"date": "05/12/2025 18:23:PM", "amt": 20000.0, "disputed": 1942.0, "atm_id": " ATM ID :-AOO01385A", "place": "Place of ATM :-3", "remarks": "TRAN DATE -(MMDD) 1205  TRAN TIME -(HHMMSS) 182324/SELF-3/845-A,BHARATHI NAGAR RAMANATHAPUR  IN/ATM WDL SEQ NO 2311ATM ID AOO01385A/BRANCH :  PARAMAKUDI"}]}, "500101014226758": {"atm": [{"date": "02/01/2026 00:00:AM", "amt": 20000.0, "disputed": 16565.0, "atm_id": null, "place": null, "remarks": "-"}, {"date": "02/01/2026 00:00:AM", "amt": 20000.0, "disputed": 8375.0, "atm_id": null, "place": null, "remarks": "-"}, {"date": "02/01/2026 00:00:AM", "amt": 20000.0, "disputed": 3435.0, "atm_id": null, "place": null, "remarks": "-"}, {"date": "02/01/2026 00:00:AM", "amt": 20000.0, "disputed": 16565.0, "atm_id": null, "place": null, "remarks": "-"}, {"date": "02/01/2026 00:00:AM", "amt": 20000.0, "disputed": 3435.0, "atm_id": null, "place": null, "remarks": "-"}]}, "1238010002089": {"atm": [{"date": "07/12/2025 10:58:AM", "amt": 10000.0, "disputed": 2000.0, "atm_id": " ATM ID :-10701238", "place": "Place of ATM :-606001", "remarks": "ATW USING 652345XXXXXX7879-REFERENCE 9965"}]}};
-const EXTRA_TXNS = {};
-</script>
-<script>
-const BOX_W = 190, BOX_H = 54;
-const colorRamp = [
-  {name:'Layer 0 (source accounts)', c:'#e0654a'},
-  {name:'Layer 1', c:'#f0a83a'},
-  {name:'Layer 2', c:'#e668a0'},
-  {name:'Layer 3', c:'#9d7cf0'},
-  {name:'Layer 4', c:'#4d8eff'},
-  {name:'Layer 5', c:'#2fbf9f'},
-  {name:'Layer 6', c:'#5fbf5f'},
-  {name:'Layer 7', c:'#e0654a'},
-  {name:'Layer 8', c:'#f0a83a'},
-  {name:'Layer 9', c:'#e668a0'},
-];
-function colorForDepth(d){ return colorRamp[d % colorRamp.length].c; }
-
-function fmtAmt(v){
-  if(v===null||v===undefined) return '—';
-  return '₹' + Number(v).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-const nodeById = {};
-GRAPH.nodes.forEach(n => nodeById[n.id] = n);
-
-const svgNS = 'http://www.w3.org/2000/svg';
-function el(tag, attrs){
-  const e = document.createElementNS(svgNS, tag);
-  for(const k in attrs) e.setAttribute(k, attrs[k]);
-  return e;
-}
-
-const svg = el('svg', {width: GRAPH.canvas_w, height: GRAPH.canvas_h, viewBox: `0 0 ${GRAPH.canvas_w} ${GRAPH.canvas_h}`});
-
-// arrowhead marker, used on every edge path to show money-flow direction
-const defs = el('defs', {});
-const arrowMarker = el('marker', {
-  id:'arrowhead', markerWidth:'8', markerHeight:'8',
-  refX:'4', refY:'4', orient:'auto'
-});
-arrowMarker.appendChild(el('path', {d:'M0,0 L8,4 L0,8 Z', fill:'#5b6478'}));
-defs.appendChild(arrowMarker);
-svg.appendChild(defs);
-
-const edgeLayer = el('g', {id:'edges'});
-const nodeLayer = el('g', {id:'nodes'});
-const labelLayer = el('g', {id:'colLabels'});
-svg.appendChild(edgeLayer);
-svg.appendChild(labelLayer);
-svg.appendChild(nodeLayer);
-document.getElementById('stage').appendChild(svg);
-
-// column labels
-const depths = [...new Set(GRAPH.nodes.map(n=>n.depth))].sort((a,b)=>a-b);
-depths.forEach(d=>{
-  const xs = GRAPH.nodes.filter(n=>n.depth===d).map(n=>n.x);
-  const x = xs[0] + BOX_W/2;
-  const t = el('text', {x, y:30, class:'col-label', 'text-anchor':'middle'});
-  t.textContent = d===0 ? 'Layer 0 (origin)' : 'Layer ' + d;
-  labelLayer.appendChild(t);
-});
-
-// Builds the path 'd' string between two nodes (each {x,y}), including
-// the midpoint split used for the arrowhead marker. Called once per edge
-// at initial render, and again for any edge touching a node being dragged.
-function buildEdgeD(s, t){
-  // Most edges flow left-to-right (source column <= destination column),
-  // so by default we exit the source's right edge and enter the
-  // destination's left edge. But a destination's column is fixed by the
-  // EARLIEST layer it was ever credited in, so some real edges flow from
-  // a later layer back to an earlier one. For those, mirror the
-  // connection points (exit source's left edge, enter destination's
-  // right edge) so the curve -- and its arrowhead -- reads correctly
-  // instead of doubling back through intervening columns.
-  const forward = s.x <= t.x;
-  const x1 = forward ? s.x + BOX_W : s.x;
-  const x2 = forward ? t.x : t.x + BOX_W;
-  const y1 = s.y + BOX_H/2, y2 = t.y + BOX_H/2;
-  const mx = (x1+x2)/2;
-  // Split the cubic Bezier P0,P1,P2,P3 at t=0.5 (De Casteljau) into two
-  // curves sharing a vertex S0 exactly at the midpoint of the path, so we
-  // can attach the arrowhead there via marker-mid. Endpoint arrows tend to
-  // get lost where many edges converge on one box; a mid-path arrow stays
-  // visible on the open part of the curve.
-  const P0x=x1, P0y=y1, P1x=mx, P1y=y1, P2x=mx, P2y=y2, P3x=x2, P3y=y2;
-  const Q0x=(P0x+P1x)/2, Q0y=(P0y+P1y)/2;
-  const Q1x=(P1x+P2x)/2, Q1y=(P1y+P2y)/2;
-  const Q2x=(P2x+P3x)/2, Q2y=(P2y+P3y)/2;
-  const R0x=(Q0x+Q1x)/2, R0y=(Q0y+Q1y)/2;
-  const R1x=(Q1x+Q2x)/2, R1y=(Q1y+Q2y)/2;
-  const S0x=(R0x+R1x)/2, S0y=(R0y+R1y)/2;
-  return `M ${P0x} ${P0y} C ${Q0x} ${Q0y}, ${R0x} ${R0y}, ${S0x} ${S0y}`
-       + ` C ${R1x} ${R1y}, ${Q2x} ${Q2y}, ${P3x} ${P3y}`;
-}
-
-// build edge paths
-const edgeEls = [];
-GRAPH.edges.forEach((e, idx)=>{
-  const s = nodeById[e.src], t = nodeById[e.dst];
-  if(!s || !t) return;
-  const path = el('path', {d: buildEdgeD(s,t), class:'edge', 'marker-mid':'url(#arrowhead)'});
-  path.dataset.src = e.src;
-  path.dataset.dst = e.dst;
-  path.dataset.idx = idx;
-  edgeLayer.appendChild(path);
-  edgeEls.push(path);
-});
-
-// recomputes only the edges touching a given node -- called on every
-// mousemove while that node is being dragged
-function updateEdgesForNode(nodeId){
-  edgeEls.forEach(p=>{
-    if(p.dataset.src === nodeId || p.dataset.dst === nodeId){
-      const s = nodeById[p.dataset.src], t = nodeById[p.dataset.dst];
-      if(s && t) p.setAttribute('d', buildEdgeD(s, t));
-    }
-  });
-}
-
-// Prevents a dragged node from landing on top of another node in the
-// same column. Checks the desired Y against every other node sharing
-// this node's x (its layer), and if it would overlap, snaps to just
-// above or below whichever neighbor is in the way -- whichever side is
-// closer to where the user was actually dragging towards. Runs a few
-// passes since resolving one overlap can create another further along.
-function resolveCollisions(nodeId, desiredY){
-  const GAP = 4;
-  const node = nodeById[nodeId];
-  const neighbors = Object.values(nodeById).filter(o => o.id !== nodeId && o.x === node.x);
-  let y = desiredY;
-  for(let iter=0; iter<8; iter++){
-    let adjusted = false;
-    for(const other of neighbors){
-      const oTop = other.y, oBottom = other.y + BOX_H;
-      const dTop = y, dBottom = y + BOX_H;
-      if(dTop < oBottom && dBottom > oTop){
-        const pushAbove = oTop - BOX_H - GAP;
-        const pushBelow = oBottom + GAP;
-        y = Math.abs(pushAbove - desiredY) <= Math.abs(pushBelow - desiredY) ? pushAbove : pushBelow;
-        adjusted = true;
-      }
-    }
-    if(!adjusted) break;
-  }
-  return y;
-}
-
-// build node boxes
-const nodeEls = {};
-GRAPH.nodes.forEach(n=>{
-  const g = el('g', {class:'node-box', 'data-id': n.id, transform: `translate(${n.x},${n.y})`});
-  const rect = el('rect', {x:0, y:0, width:BOX_W, height:BOX_H, rx:8, fill:colorForDepth(n.depth), 'fill-opacity':0.9});
-  g.appendChild(rect);
-  const title = el('text', {x:10, y:22, class:'node-title'});
-  title.textContent = '••' + n.short;
-  g.appendChild(title);
-  const sub = el('text', {x:10, y:40, class:'node-sub'});
-  sub.textContent = (n.bank||'Unknown').slice(0,26);
-  g.appendChild(sub);
-
-  const wd = WITHDRAWALS[n.id];
-  if (wd) {
-    const flags = [];
-    if (wd.atm > 0) flags.push('#e04a4a');
-    if (wd.cheque > 0) flags.push('#f0a83a');
-    if (wd.hold > 0) flags.push('#5fbf5f');
-    flags.forEach((color, fi) => {
-      const dot = el('circle', {
-        cx: BOX_W - 10 - fi*11, cy: 10, r: 3.4,
-        fill: color, class: 'flag-dot'
-      });
-      g.appendChild(dot);
-    });
-  }
-
-  nodeLayer.appendChild(g);
-  nodeEls[n.id] = g;
-
-  g.addEventListener('mousedown', (e)=>{
-    e.stopPropagation(); // don't also trigger canvas panning
-    draggingNodeId = n.id;
-    nodeDragStartMouseY = e.clientY;
-    nodeDragStartNodeY = nodeById[n.id].y;
-    nodeDragMoved = false;
-    g.classList.add('dragging');
-    highlight(n.id); // only this node's connectors should light up while dragging
-  });
-  g.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    if(suppressNextClick){ suppressNextClick = false; return; }
-    lockedId = n.id;
-    highlight(n.id);
-    showDetails(n.id);
-  });
-  g.addEventListener('mouseenter', ()=>{ if(!lockedId && !draggingNodeId) highlight(n.id); });
-  g.addEventListener('mouseleave', ()=>{ if(!lockedId && !draggingNodeId) clearHighlight(); });
-});
-
-let lockedId = null;
-let draggingNodeId = null, nodeDragStartMouseY = 0, nodeDragStartNodeY = 0, nodeDragMoved = false;
-let suppressNextClick = false;
-
-function highlight(id){
-  edgeEls.forEach(p=>{
-    if(p.dataset.src===id || p.dataset.dst===id){ p.classList.add('hi'); p.classList.remove('dim'); }
-    else { p.classList.add('dim'); p.classList.remove('hi'); }
-  });
-  Object.entries(nodeEls).forEach(([nid,g])=>{
-    if(nid===id) return;
-    const connected = GRAPH.edges.some(e => (e.src===id&&e.dst===nid)||(e.dst===id&&e.src===nid));
-    g.classList.toggle('dim', !connected);
-  });
-}
-function clearHighlight(){
-  edgeEls.forEach(p=>{ p.classList.remove('hi'); p.classList.remove('dim'); });
-  Object.values(nodeEls).forEach(g=> g.classList.remove('dim'));
-}
-function clearSelection(){
-  lockedId = null;
-  clearHighlight();
-}
-
-function showDetails(id){
-  const n = nodeById[id];
-  const out = GRAPH.edges.filter(e=>e.src===id);
-  const inc = GRAPH.edges.filter(e=>e.dst===id);
-  let html = `<h2>Account ending ${n.short}</h2>
-    <div class="acct">${n.display_account || id}</div>
-    <div class="section"><h3>Details</h3>
-      <div class="tx-item">Bank: ${n.bank||'Unknown'}<br>Layer: ${n.depth}</div>
-    </div>`;
-  const wd = WITHDRAWALS[id];
-  if (wd) {
-    html += `<div class="section"><h3>Withdrawals &amp; holds on this account</h3>
-      <div class="wd-grid">
-        <div class="wd-card cash"><div class="wd-label">Cash (ATM)</div><div class="wd-val">${fmtAmt(wd.atm)}</div></div>
-        <div class="wd-card cheque"><div class="wd-label">Cheque</div><div class="wd-val">${fmtAmt(wd.cheque)}</div></div>
-        <div class="wd-card hold"><div class="wd-label">On hold</div><div class="wd-val">${fmtAmt(wd.hold)}</div></div>
-      </div>
-    </div>`;
-  }
-  const wtx = WITHDRAWAL_TXNS[id];
-  if (wtx && wtx.atm && wtx.atm.length) {
-    html += `<div class="section"><h3>Cash withdrawals &ndash; ATM (${wtx.atm.length})</h3>`;
-    wtx.atm.forEach(t=>{
-      html += `<div class="tx-item">
-        <span class="amt">${fmtAmt(t.amt)}</span> <span class="lbl">disputed ${fmtAmt(t.disputed)}</span><br>
-        <span class="lbl">${t.date||''}</span><br>
-        <span class="lbl">${(t.atm_id||'').trim()}</span><br>
-        <span class="lbl">${(t.place||'').trim()}</span>
-        ${t.remarks ? `<div class="rmk">${t.remarks}</div>` : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  if (wtx && wtx.cheque && wtx.cheque.length) {
-    html += `<div class="section"><h3>Cheque withdrawals (${wtx.cheque.length})</h3>`;
-    wtx.cheque.forEach(t=>{
-      html += `<div class="tx-item">
-        <span class="amt">${fmtAmt(t.amt)}</span> <span class="lbl">disputed ${fmtAmt(t.disputed)}</span><br>
-        <span class="lbl">${t.date||''}</span><br>
-        <span class="lbl">Cheque no. ${t.cheque_no||'—'}</span><br>
-        <span class="lbl">${(t.branch||'').trim()}</span>
-        ${t.remarks && t.remarks !== 'NULL' ? `<div class="rmk">${t.remarks}</div>` : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  const extra = EXTRA_TXNS[id];
-  if (extra && extra.length) {
-    html += `<div class="section"><h3>Other reported entries (${extra.length})</h3>`;
-    extra.forEach(t=>{
-      html += `<div class="tx-item">
-        <span class="lbl">Type:</span> ${t.type||'Other'}<br>
-        <span class="lbl">Transaction ID:</span> ${t.txn_id||'NA'}<br>
-        ${t.amt!=null ? `<span class="amt">${fmtAmt(t.amt)}</span><br>` : ''}
-        <span class="lbl">${t.date||''}</span>
-        ${t.remarks ? `<div class="rmk">${t.remarks}</div>` : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  if(inc.length){
-    html += `<div class="section"><h3>Money received (${inc.length})</h3>`;
-    inc.forEach(e=>{
-      html += `<div class="tx-item">
-        <span class="lbl">From</span> ••${e.src.slice(-4)} (${(nodeById[e.src] && nodeById[e.src].bank) || ''})<br>
-        <span class="amt">${fmtAmt(e.amt)}</span> <span class="lbl">disputed ${fmtAmt(e.disputed)}</span><br>
-        <span class="lbl">${e.date||''}</span>
-        ${e.remarks ? `<div class="rmk">${e.remarks}</div>` : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  if(out.length){
-    html += `<div class="section"><h3>Money sent onward (${out.length})</h3>`;
-    out.forEach(e=>{
-      html += `<div class="tx-item">
-        <span class="lbl">To</span> ••${e.dst.slice(-4)} (${e.dest_bank||''})<br>
-        <span class="amt">${fmtAmt(e.amt)}</span> <span class="lbl">disputed ${fmtAmt(e.disputed)}</span><br>
-        <span class="lbl">${e.date||''}</span>
-        ${e.remarks ? `<div class="rmk">${e.remarks}</div>` : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  document.getElementById('panel-body').innerHTML = html;
-  document.getElementById('panel').classList.add('open');
-  highlight(id);
-}
-
-document.getElementById('panel-close').addEventListener('click', ()=>{
-  document.getElementById('panel').classList.remove('open');
-  clearSelection();
-});
-
-// legend
-const legend = document.getElementById('legend');
-depths.forEach(d=>{
-  const span = document.createElement('span');
-  span.innerHTML = `<span class="dot" style="background:${colorForDepth(d)}"></span>Layer ${d}`;
-  legend.appendChild(span);
-});
-const flagLegend = [
-  {label:'Cash withdrawn (ATM)', color:'#e04a4a'},
-  {label:'Cheque withdrawn', color:'#f0a83a'},
-  {label:'Amount on hold', color:'#5fbf5f'},
-];
-flagLegend.forEach(f=>{
-  const span = document.createElement('span');
-  span.innerHTML = `<span class="dot" style="background:${f.color};border-radius:50%"></span>${f.label}`;
-  legend.appendChild(span);
-});
-
-// pan & zoom
-const wrap = document.getElementById('stage-wrap');
-const stage = document.getElementById('stage');
-let scale = 1, tx = 20, ty = 20;
-let dragging = false, lastX=0, lastY=0;
-let dragStartX=0, dragStartY=0, dragMoved=false, downOnCanvas=false;
-
-function applyTransform(){
-  stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-}
-function fitToScreen(){
-  const wrapRect = wrap.getBoundingClientRect();
-  const sx = wrapRect.width / GRAPH.canvas_w;
-  const sy = wrapRect.height / GRAPH.canvas_h;
-  scale = Math.min(sx, sy, 1) * 0.95;
-  tx = (wrapRect.width - GRAPH.canvas_w*scale)/2;
-  ty = 20;
-  applyTransform();
-}
-document.getElementById('reset-btn').addEventListener('click', ()=>{ scale=1; tx=20; ty=20; applyTransform(); });
-document.getElementById('fit-btn').addEventListener('click', fitToScreen);
-
-wrap.addEventListener('wheel', (e)=>{
-  e.preventDefault();
-  const rect = wrap.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const newScale = Math.min(Math.max(scale*delta, 0.15), 3);
-  const wx = (mx - tx) / scale, wy = (my - ty) / scale;
-  tx = mx - wx*newScale;
-  ty = my - wy*newScale;
-  scale = newScale;
-  applyTransform();
-}, {passive:false});
-
-wrap.addEventListener('mousedown', (e)=>{
-  dragging = true; lastX = e.clientX; lastY = e.clientY;
-  dragStartX = e.clientX; dragStartY = e.clientY; dragMoved = false;
-  downOnCanvas = true;
-  wrap.classList.add('grabbing');
-});
-window.addEventListener('mousemove', (e)=>{
-  if(draggingNodeId){
-    const dyScreen = e.clientY - nodeDragStartMouseY;
-    if(Math.abs(dyScreen) > 2) nodeDragMoved = true;
-    const dy = dyScreen / scale; // convert screen-space delta to SVG-space
-    let newY = nodeDragStartNodeY + dy;
-    newY = Math.max(20, Math.min(newY, GRAPH.canvas_h - BOX_H - 20));
-    newY = resolveCollisions(draggingNodeId, newY);
-    const node = nodeById[draggingNodeId];
-    node.y = newY;
-    nodeEls[draggingNodeId].setAttribute('transform', `translate(${node.x},${node.y})`);
-    updateEdgesForNode(draggingNodeId);
-    return;
-  }
-  if(!dragging) return;
-  if(Math.abs(e.clientX-dragStartX) > 3 || Math.abs(e.clientY-dragStartY) > 3) dragMoved = true;
-  tx += (e.clientX - lastX); ty += (e.clientY - lastY);
-  lastX = e.clientX; lastY = e.clientY;
-  applyTransform();
-});
-window.addEventListener('mouseup', (e)=>{
-  if(draggingNodeId){
-    nodeEls[draggingNodeId].classList.remove('dragging');
-    if(nodeDragMoved) suppressNextClick = true; // a real drag shouldn't also open the details panel
-    // Highlighting is only meant to apply *while* a node is being
-    // dragged; a genuine click will immediately re-highlight/lock via
-    // its own handler (mouseup always fires before click), so this
-    // doesn't affect normal click-to-view behavior.
-    clearHighlight();
-    draggingNodeId = null;
-    return;
-  }
-  const wasDown = downOnCanvas;
-  dragging=false; wrap.classList.remove('grabbing'); downOnCanvas = false;
-  // a genuine click (no drag) that started on blank canvas clears the
-  // locked selection. Node clicks stopPropagation on 'click' (which fires
-  // after 'mouseup'), so they re-lock immediately afterwards; clicks that
-  // started outside the canvas (toolbar, panel) never set wasDown.
-  if(wasDown && !dragMoved){
-    clearSelection();
-    document.getElementById('panel').classList.remove('open');
-  }
-});
-
-// search
-document.getElementById('search').addEventListener('input', (e)=>{
-  const q = e.target.value.trim();
-  if(!q){ clearHighlight(); return; }
-  const match = GRAPH.nodes.find(n => n.id.includes(q));
-  if(match){
-    highlight(match.id);
-    const rect = wrap.getBoundingClientRect();
-    scale = 1;
-    tx = rect.width/2 - (match.x+BOX_W/2);
-    ty = rect.height/2 - (match.y+BOX_H/2);
-    applyTransform();
-  }
-});
-
-fitToScreen();
-window.addEventListener('resize', fitToScreen);
-</script>
-</body>
-</html>
+--- /home/claude/work/orig/MoneyTrailApp/core/templates/money_trail_template.html	2026-07-27 00:36:50.000000000 +0000
++++ /home/claude/work/app/MoneyTrailApp/core/templates/money_trail_template.html	2026-09-11 03:09:34.066901589 +0000
+@@ -27,6 +27,21 @@
+     border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;
+   }
+   button:hover{background:#242c3c;}
++  #filter-group{display:flex;align-items:center;gap:6px;}
++  #filter-group label{font-size:12px;color:var(--text-dim);white-space:nowrap;}
++  #account-filter{
++    background:var(--panel2);border:1px solid var(--border);color:var(--text);
++    border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer;
++  }
++  #account-filter:hover{background:#242c3c;}
++  #filter-count{
++    font-size:11px;color:var(--text-dim);background:var(--panel2);
++    border:1px solid var(--border);border-radius:999px;padding:3px 9px;white-space:nowrap;
++  }
++  .node-box.filter-hidden, .edge.filter-hidden{display:none;}
++  .node-box.filter-path{opacity:0.32;}
++  .node-box.filter-path:hover{opacity:0.6;}
++  .edge.filter-path{opacity:0.16;}
+   #stage-wrap{
+     position:relative;width:100%;height:calc(100vh - 54px);overflow:hidden;cursor:grab;
+     background:
+@@ -46,7 +61,7 @@
+   .node-box.dim{opacity:0.18;}
+   .node-box.dragging{cursor:ns-resize;filter:brightness(1.4) drop-shadow(0 4px 8px rgba(0,0,0,0.5));}
+   .node-box.dragging rect{stroke:var(--accent);stroke-width:2;}
+-  .node-title{font-size:12px;font-weight:600;fill:#fff;}
++  .node-title{font-size:11px;font-weight:600;fill:#fff;font-family:"SF Mono",Consolas,Menlo,monospace;}
+   .node-sub{font-size:10px;fill:rgba(255,255,255,0.75);}
+   .flag-dot{stroke:rgba(0,0,0,0.35);stroke-width:0.6;}
+   #panel{
+@@ -90,6 +105,15 @@
+   <h1>Money trail — by layer</h1>
+   <div class="sub">86 accounts &middot; 124 transactions &middot; layers 0&ndash;9 &middot; &#8377;6,67,054 cash &middot; &#8377;17,00,000 cheque &middot; &#8377;24,94,520 on hold</div>
+   <input id="search" placeholder="Search account number...">
++  <div id="filter-group">
++    <label for="account-filter">View</label>
++    <select id="account-filter">
++      <option value="all" selected>Complete view</option>
++      <option value="atm">ATM withdrawal accounts</option>
++      <option value="cheque">Cheque withdrawal accounts</option>
++    </select>
++    <span id="filter-count"></span>
++  </div>
+   <button id="reset-btn">Reset view</button>
+   <button id="fit-btn">Fit to screen</button>
+ </div>
+@@ -98,7 +122,7 @@
+   <div id="stage"></div>
+ </div>
+ 
+-<div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account</div>
++<div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account &middot; in a filtered view, greyed-out boxes are on the money's path but don't themselves match the filter</div>
+ 
+ <div id="legend"></div>
+ 
+@@ -114,7 +138,7 @@
+ const EXTRA_TXNS = {};
+ </script>
+ <script>
+-const BOX_W = 190, BOX_H = 54;
++const BOX_W = 230, BOX_H = 54;
+ const colorRamp = [
+   {name:'Layer 0 (source accounts)', c:'#e0654a'},
+   {name:'Layer 1', c:'#f0a83a'},
+@@ -144,6 +168,22 @@
+   return e;
+ }
+ 
++// Shrinks a <text> element's content to fit maxWidth by measuring actual
++// rendered width and trimming with an ellipsis -- only kicks in for the
++// rare account number/label too long for the box; the full value is
++// still always available via the node's <title> tooltip and detail panel.
++function fitNodeTitleText(textEl, maxWidth){
++  const full = textEl.textContent;
++  if (textEl.getComputedTextLength() <= maxWidth) return;
++  let lo = 0, hi = full.length;
++  while (lo < hi) {
++    const mid = Math.ceil((lo + hi) / 2);
++    textEl.textContent = full.slice(0, mid) + '…';
++    if (textEl.getComputedTextLength() <= maxWidth) lo = mid; else hi = mid - 1;
++  }
++  textEl.textContent = full.slice(0, lo) + '…';
++}
++
+ const svg = el('svg', {width: GRAPH.canvas_w, height: GRAPH.canvas_h, viewBox: `0 0 ${GRAPH.canvas_w} ${GRAPH.canvas_h}`});
+ 
+ // arrowhead marker, used on every edge path to show money-flow direction
+@@ -265,9 +305,14 @@
+   const g = el('g', {class:'node-box', 'data-id': n.id, transform: `translate(${n.x},${n.y})`});
+   const rect = el('rect', {x:0, y:0, width:BOX_W, height:BOX_H, rx:8, fill:colorForDepth(n.depth), 'fill-opacity':0.9});
+   g.appendChild(rect);
++  const fullAcct = (n.display_account || n.id || '').toString();
+   const title = el('text', {x:10, y:22, class:'node-title'});
+-  title.textContent = '••' + n.short;
++  title.textContent = fullAcct;
+   g.appendChild(title);
++  // native tooltip on hover always shows the complete, untruncated number
++  const titleTip = el('title', {});
++  titleTip.textContent = fullAcct;
++  g.appendChild(titleTip);
+   const sub = el('text', {x:10, y:40, class:'node-sub'});
+   sub.textContent = (n.bank||'Unknown').slice(0,26);
+   g.appendChild(sub);
+@@ -288,6 +333,7 @@
+   }
+ 
+   nodeLayer.appendChild(g);
++  fitNodeTitleText(title, BOX_W - 20);
+   nodeEls[n.id] = g;
+ 
+   g.addEventListener('mousedown', (e)=>{
+@@ -338,7 +384,7 @@
+   const n = nodeById[id];
+   const out = GRAPH.edges.filter(e=>e.src===id);
+   const inc = GRAPH.edges.filter(e=>e.dst===id);
+-  let html = `<h2>Account ending ${n.short}</h2>
++  let html = `<h2>${n.bank || 'Account'}</h2>
+     <div class="acct">${n.display_account || id}</div>
+     <div class="section"><h3>Details</h3>
+       <div class="tx-item">Bank: ${n.bank||'Unknown'}<br>Layer: ${n.depth}</div>
+@@ -428,6 +474,91 @@
+   clearSelection();
+ });
+ 
++// ---- account view filter (Complete / ATM withdrawals / Cheque withdrawals) ----
++// "From Layer 1 onwards" excludes the Layer 0 origin/victim account itself,
++// since the origin never has withdrawal transactions of its own -- it's
++// always shown as ancestry context, never as a match.
++function accountsMatching(kind){
++  return new Set(
++    GRAPH.nodes
++      .filter(n => n.depth >= 1 && WITHDRAWALS[n.id] && WITHDRAWALS[n.id][kind] > 0)
++      .map(n => n.id)
++  );
++}
++
++// walks incoming edges backward from every matching account to the Layer 0
++// origin, so the connecting trail stays visible (dimmed) even though those
++// intermediate accounts didn't themselves match the filter
++function ancestorsOf(matchIds){
++  const visited = new Set();
++  const stack = [...matchIds];
++  while(stack.length){
++    const id = stack.pop();
++    GRAPH.edges.forEach(e=>{
++      if(e.dst === id && !matchIds.has(e.src) && !visited.has(e.src)){
++        visited.add(e.src);
++        stack.push(e.src);
++      }
++    });
++  }
++  return visited;
++}
++
++function updateFilterCount(n){
++  const badge = document.getElementById('filter-count');
++  badge.textContent = n === GRAPH.nodes.length
++    ? `${n} accounts`
++    : `${n} of ${GRAPH.nodes.length} accounts match`;
++}
++
++function applyAccountFilter(mode){
++  if(mode === 'all'){
++    Object.values(nodeEls).forEach(g => g.classList.remove('filter-hidden','filter-path'));
++    edgeEls.forEach(p => p.classList.remove('filter-hidden','filter-path'));
++    updateFilterCount(GRAPH.nodes.length);
++    return;
++  }
++
++  const matchIds = accountsMatching(mode);
++  const ancestors = ancestorsOf(matchIds);
++  const visible = new Set([...matchIds, ...ancestors]);
++
++  Object.entries(nodeEls).forEach(([id, g])=>{
++    if(matchIds.has(id)){
++      g.classList.remove('filter-hidden','filter-path');
++    } else if(ancestors.has(id)){
++      g.classList.remove('filter-hidden');
++      g.classList.add('filter-path');
++    } else {
++      g.classList.add('filter-hidden');
++      g.classList.remove('filter-path');
++    }
++  });
++
++  edgeEls.forEach(p=>{
++    const s = p.dataset.src, t = p.dataset.dst;
++    if(visible.has(s) && visible.has(t)){
++      p.classList.remove('filter-hidden');
++      p.classList.toggle('filter-path', !matchIds.has(t));
++    } else {
++      p.classList.add('filter-hidden');
++    }
++  });
++
++  updateFilterCount(matchIds.size);
++
++  // a locked/highlighted selection that's no longer visible shouldn't stay open
++  if(lockedId && !visible.has(lockedId)){
++    clearSelection();
++    document.getElementById('panel').classList.remove('open');
++  }
++}
++
++document.getElementById('account-filter').addEventListener('change', (e)=>{
++  applyAccountFilter(e.target.value);
++});
++updateFilterCount(GRAPH.nodes.length);
++
+ // legend
+ const legend = document.getElementById('legend');
+ depths.forEach(d=>{
