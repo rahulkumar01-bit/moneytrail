@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Money Trail Flowchart — by Layer</title>
 <style>
   :root{
@@ -12,23 +13,30 @@
     --purple:#9d7cf0; --pink:#e668a0; --gray:#7d8598; --green:#5fbf5f; --red:#e04a4a;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
+  html, body{height:100%;margin:0;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;display:flex;flex-direction:column;}
   #toolbar{
-    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+    flex:0 0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);
   }
-  #toolbar h1{font-size:15px;font-weight:600;margin:0;color:var(--text);white-space:nowrap;}
-  #toolbar .sub{font-size:12px;color:var(--text-dim);white-space:nowrap;}
+  #toolbar h1{font-size:15px;font-weight:600;margin:0;color:var(--text);white-space:nowrap;flex:0 0 auto;}
+  #toolbar .sub{font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 120px;min-width:0;}
   #search{
     flex:1;max-width:280px;background:var(--panel2);border:1px solid var(--border);
     color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;
   }
+  #search.no-match{border-color:var(--red);}
+  #search-group{display:flex;align-items:center;gap:6px;flex:0 1 300px;max-width:340px;min-width:160px;}
+  #search-status{
+    font-size:11px;color:var(--text-dim);white-space:nowrap;
+  }
+  #search-status.no-match{color:var(--red);}
   button{
     background:var(--panel2);border:1px solid var(--border);color:var(--text);
-    border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;
+    border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;flex:0 0 auto;
   }
   button:hover{background:#242c3c;}
-  #filter-group{display:flex;align-items:center;gap:6px;}
+  #filter-group{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
   #filter-group label{font-size:12px;color:var(--text-dim);white-space:nowrap;}
   #account-filter{
     background:var(--panel2);border:1px solid var(--border);color:var(--text);
@@ -44,7 +52,7 @@
   .node-box.filter-path:hover{opacity:0.6;}
   .edge.filter-path{opacity:0.16;}
   #stage-wrap{
-    position:relative;width:100%;height:calc(100vh - 54px);overflow:hidden;cursor:grab;
+    position:relative;width:100%;flex:1 1 auto;min-height:0;overflow:hidden;cursor:grab;
     background:
       radial-gradient(circle at 1px 1px, #1e2430 1px, transparent 1px) 0 0/22px 22px;
   }
@@ -64,9 +72,9 @@
   .node-box.dragging rect{stroke:var(--accent);stroke-width:2;}
   .node-title{font-size:11px;font-weight:600;fill:#fff;font-family:"SF Mono",Consolas,Menlo,monospace;}
   .node-sub{font-size:10px;fill:rgba(255,255,255,0.75);}
-  .flag-dot{stroke:rgba(0,0,0,0.35);stroke-width:0.6;}
+  .flag-dot{stroke:rgba(0,0,0,0.4);stroke-width:0.9;}
   #panel{
-    position:fixed;top:54px;right:0;width:340px;height:calc(100vh - 54px);
+    position:fixed;top:0;right:0;width:340px;height:100vh;
     background:var(--panel);border-left:1px solid var(--border);
     padding:18px;overflow-y:auto;transform:translateX(100%);transition:transform .2s;
     z-index:30;
@@ -97,15 +105,44 @@
     display:flex;gap:14px;align-items:center;flex-wrap:wrap;max-width:70vw;
   }
   #legend .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
-  #hint{position:fixed;left:16px;top:62px;font-size:11px;color:var(--text-mute);z-index:20;}
+  #hint{position:absolute;left:16px;top:8px;font-size:11px;color:var(--text-mute);z-index:20;max-width:calc(100% - 32px);}
+  @media (max-width: 720px){
+    #toolbar{padding:8px 10px;gap:8px;}
+    #toolbar h1{font-size:13px;}
+    #toolbar .sub{display:none;}
+    #search-group{max-width:none;flex-basis:100%;order:3;}
+    #filter-group{flex-basis:100%;order:4;}
+    #hint{display:none;}
+    #legend{max-width:calc(100vw - 24px);font-size:10px;gap:8px;padding:8px 10px;}
+    #panel{width:100vw;max-width:100vw;}
+  }
+  #print-notice{display:none;}
+  @media print{
+    body{background:#fff;color:#111;}
+    #toolbar, #legend, #hint, #panel{display:none !important;}
+    #stage-wrap{height:auto;overflow:visible;background:none;}
+    #stage{transform:none !important;}
+    .node-box rect{stroke:#333;}
+    .node-title, .node-sub{fill:#111;}
+    .col-label{fill:#333;}
+    .edge{stroke:#999;}
+    #print-notice{
+      display:block;padding:10px 16px;font-size:12px;color:#111;
+      border-bottom:1px solid #ccc;
+    }
+  }
 </style>
 </head>
 <body>
+<div id="print-notice">This is the interactive HTML view. For a properly paginated, print-ready copy, use the PDF generated alongside this file.</div>
 
 <div id="toolbar">
   <h1>Money trail — by layer</h1>
   <div class="sub">86 accounts &middot; 124 transactions &middot; layers 0&ndash;9 &middot; &#8377;6,67,054 cash &middot; &#8377;17,00,000 cheque &middot; &#8377;24,94,520 on hold</div>
-  <input id="search" placeholder="Search account number...">
+  <div id="search-group">
+    <input id="search" placeholder="Search account number..." title="Press Enter to jump to the next match">
+    <span id="search-status"></span>
+  </div>
   <div id="filter-group">
     <label for="account-filter">View</label>
     <select id="account-filter">
@@ -121,9 +158,8 @@
 
 <div id="stage-wrap">
   <div id="stage"></div>
+  <div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account &middot; in a filtered view, greyed-out boxes are on the money's path but don't themselves match the filter</div>
 </div>
-
-<div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account &middot; in a filtered view, greyed-out boxes are on the money's path but don't themselves match the filter</div>
 
 <div id="legend"></div>
 
@@ -140,18 +176,26 @@ const EXTRA_TXNS = {};
 </script>
 <script>
 const BOX_W = 230, BOX_H = 54;
-const colorRamp = [
-  {name:'Layer 0 (source accounts)', c:'#e0654a'},
-  {name:'Layer 1', c:'#f0a83a'},
-  {name:'Layer 2', c:'#e668a0'},
-  {name:'Layer 3', c:'#9d7cf0'},
-  {name:'Layer 4', c:'#4d8eff'},
-  {name:'Layer 5', c:'#2fbf9f'},
-  {name:'Layer 6', c:'#5fbf5f'},
-  {name:'Layer 7', c:'#e0654a'},
-  {name:'Layer 8', c:'#f0a83a'},
-  {name:'Layer 9', c:'#e668a0'},
-];
+// Generates one visually distinct color per layer actually present in this
+// report (not a fixed palette) -- a fixed short list previously repeated
+// after 7 layers, so e.g. Layer 7 rendered in the same color as Layer 0
+// (the origin account), which is exactly the kind of mix-up this diagram
+// exists to prevent on deep chains. Hue steps by the golden angle so
+// adjacent layers stay visually separated even as the layer count grows,
+// and lightness/saturation shift slightly across cycles as a second cue.
+function buildColorRamp(depthCount){
+  const GOLDEN_ANGLE = 137.508;
+  const ramp = [];
+  for(let i=0;i<depthCount;i++){
+    const hue = (i * GOLDEN_ANGLE) % 360;
+    const sat = 62 + (i % 3) * 6;      // 62 / 68 / 74
+    const light = 56 - (Math.floor(i/12) * 4); // nudges darker on very long chains
+    ramp.push({name: i===0 ? 'Layer 0 (source accounts)' : 'Layer ' + i, c: `hsl(${hue.toFixed(1)}, ${sat}%, ${light}%)`});
+  }
+  return ramp;
+}
+// depth count is known once GRAPH.nodes is available; +1 covers depth 0
+const colorRamp = buildColorRamp(Math.max(...GRAPH.nodes.map(n=>n.depth)) + 1);
 function colorForDepth(d){ return colorRamp[d % colorRamp.length].c; }
 
 function fmtAmt(v){
@@ -161,6 +205,11 @@ function fmtAmt(v){
 
 const nodeById = {};
 GRAPH.nodes.forEach(n => nodeById[n.id] = n);
+// snapshot the original layout position of every node -- boxes can be
+// manually dragged up/down within their layer, and "Reset view" restores
+// these alongside pan/zoom so an accidental drag is never a dead end
+const origNodeY = {};
+GRAPH.nodes.forEach(n => { origNodeY[n.id] = n.y; });
 
 const svgNS = 'http://www.w3.org/2000/svg';
 function el(tag, attrs){
@@ -321,14 +370,17 @@ GRAPH.nodes.forEach(n=>{
   const wd = WITHDRAWALS[n.id];
   if (wd) {
     const flags = [];
-    if (wd.atm > 0) flags.push('#e04a4a');
-    if (wd.cheque > 0) flags.push('#f0a83a');
-    if (wd.hold > 0) flags.push('#5fbf5f');
-    flags.forEach((color, fi) => {
+    if (wd.atm > 0) flags.push({color:'#e04a4a', label:'Cash withdrawn (ATM)'});
+    if (wd.cheque > 0) flags.push({color:'#f0a83a', label:'Cheque withdrawn'});
+    if (wd.hold > 0) flags.push({color:'#5fbf5f', label:'Amount on hold'});
+    flags.forEach((flag, fi) => {
       const dot = el('circle', {
-        cx: BOX_W - 10 - fi*11, cy: 10, r: 3.4,
-        fill: color, class: 'flag-dot'
+        cx: BOX_W - 12 - fi*14, cy: 11, r: 4.2,
+        fill: flag.color, class: 'flag-dot'
       });
+      const dotTip = el('title', {});
+      dotTip.textContent = flag.label;
+      dot.appendChild(dotTip);
       g.appendChild(dot);
     });
   }
@@ -346,11 +398,21 @@ GRAPH.nodes.forEach(n=>{
     g.classList.add('dragging');
     highlight(n.id); // only this node's connectors should light up while dragging
   });
+  g.addEventListener('touchstart', (e)=>{
+    e.stopPropagation(); // don't also trigger canvas pan/pinch
+    const t = e.touches[0];
+    draggingNodeId = n.id;
+    nodeDragStartMouseY = t.clientY;
+    nodeDragStartNodeY = nodeById[n.id].y;
+    nodeDragMoved = false;
+    g.classList.add('dragging');
+    highlight(n.id);
+  }, {passive:true});
   g.addEventListener('click', (e)=>{
     e.stopPropagation();
     if(suppressNextClick){ suppressNextClick = false; return; }
     lockedId = n.id;
-    highlight(n.id);
+    highlightFullPath(n.id);
     showDetails(n.id);
   });
   g.addEventListener('mouseenter', ()=>{ if(!lockedId && !draggingNodeId) highlight(n.id); });
@@ -370,6 +432,56 @@ function highlight(id){
     if(nid===id) return;
     const connected = GRAPH.edges.some(e => (e.src===id&&e.dst===nid)||(e.dst===id&&e.src===nid));
     g.classList.toggle('dim', !connected);
+  });
+}
+// Walks purely backward (incoming edges) from a starting set to find every
+// upstream account, and purely forward (outgoing edges) to find every
+// downstream account. Shared by the account filter (ancestors only, to keep
+// the trail back to origin visible) and by full-path trace below (both
+// directions, to show a clicked account's complete flow of funds).
+function ancestorsOf(startIds){
+  const visited = new Set();
+  const stack = [...startIds];
+  while(stack.length){
+    const id = stack.pop();
+    GRAPH.edges.forEach(e=>{
+      if(e.dst === id && !startIds.has(e.src) && !visited.has(e.src)){
+        visited.add(e.src);
+        stack.push(e.src);
+      }
+    });
+  }
+  return visited;
+}
+function descendantsOf(startIds){
+  const visited = new Set();
+  const stack = [...startIds];
+  while(stack.length){
+    const id = stack.pop();
+    GRAPH.edges.forEach(e=>{
+      if(e.src === id && !startIds.has(e.dst) && !visited.has(e.dst)){
+        visited.add(e.dst);
+        stack.push(e.dst);
+      }
+    });
+  }
+  return visited;
+}
+// Full trace: clicking an account highlights its ENTIRE flow of funds --
+// every upstream account money passed through to reach it, and every
+// downstream account it fed money into -- not just its immediate neighbors.
+// Tracing a multi-layer chain previously meant clicking through one hop
+// at a time; this shows the whole path in one click.
+function highlightFullPath(id){
+  const start = new Set([id]);
+  const chain = new Set([id, ...ancestorsOf(start), ...descendantsOf(start)]);
+  edgeEls.forEach(p=>{
+    const inChain = chain.has(p.dataset.src) && chain.has(p.dataset.dst);
+    p.classList.toggle('hi', inChain);
+    p.classList.toggle('dim', !inChain);
+  });
+  Object.entries(nodeEls).forEach(([nid,g])=>{
+    g.classList.toggle('dim', !chain.has(nid));
   });
 }
 function clearHighlight(){
@@ -467,7 +579,10 @@ function showDetails(id){
   }
   document.getElementById('panel-body').innerHTML = html;
   document.getElementById('panel').classList.add('open');
-  highlight(id);
+  // NOTE: deliberately no highlight() call here -- callers (click handler,
+  // touch tap handler, search jump) already set the correct highlight
+  // (highlightFullPath) immediately before calling showDetails(); calling
+  // highlight() here would silently downgrade it back to neighbors-only.
 }
 
 document.getElementById('panel-close').addEventListener('click', ()=>{
@@ -489,21 +604,8 @@ function accountsMatching(kind){
 
 // walks incoming edges backward from every matching account to the Layer 0
 // origin, so the connecting trail stays visible (dimmed) even though those
-// intermediate accounts didn't themselves match the filter
-function ancestorsOf(matchIds){
-  const visited = new Set();
-  const stack = [...matchIds];
-  while(stack.length){
-    const id = stack.pop();
-    GRAPH.edges.forEach(e=>{
-      if(e.dst === id && !matchIds.has(e.src) && !visited.has(e.src)){
-        visited.add(e.src);
-        stack.push(e.src);
-      }
-    });
-  }
-  return visited;
-}
+// intermediate accounts didn't themselves match the filter. Reuses the
+// shared ancestorsOf() defined earlier alongside highlightFullPath().
 
 function updateFilterCount(n){
   const badge = document.getElementById('filter-count');
@@ -597,7 +699,16 @@ function fitToScreen(){
   ty = 20;
   applyTransform();
 }
-document.getElementById('reset-btn').addEventListener('click', ()=>{ scale=1; tx=20; ty=20; applyTransform(); });
+document.getElementById('reset-btn').addEventListener('click', ()=>{
+  scale=1; tx=20; ty=20; applyTransform();
+  GRAPH.nodes.forEach(n=>{
+    if(n.y !== origNodeY[n.id]){
+      n.y = origNodeY[n.id];
+      nodeEls[n.id].setAttribute('transform', `translate(${n.x},${n.y})`);
+      updateEdgesForNode(n.id);
+    }
+  });
+});
 document.getElementById('fit-btn').addEventListener('click', fitToScreen);
 
 wrap.addEventListener('wheel', (e)=>{
@@ -613,69 +724,196 @@ wrap.addEventListener('wheel', (e)=>{
   applyTransform();
 }, {passive:false});
 
-wrap.addEventListener('mousedown', (e)=>{
-  dragging = true; lastX = e.clientX; lastY = e.clientY;
-  dragStartX = e.clientX; dragStartY = e.clientY; dragMoved = false;
+// --- shared pan / node-drag logic, used by both mouse and touch handlers ---
+function panStart(clientX, clientY){
+  dragging = true; lastX = clientX; lastY = clientY;
+  dragStartX = clientX; dragStartY = clientY; dragMoved = false;
   downOnCanvas = true;
   wrap.classList.add('grabbing');
-});
-window.addEventListener('mousemove', (e)=>{
-  if(draggingNodeId){
-    const dyScreen = e.clientY - nodeDragStartMouseY;
-    if(Math.abs(dyScreen) > 2) nodeDragMoved = true;
-    const dy = dyScreen / scale; // convert screen-space delta to SVG-space
-    let newY = nodeDragStartNodeY + dy;
-    newY = Math.max(20, Math.min(newY, GRAPH.canvas_h - BOX_H - 20));
-    newY = resolveCollisions(draggingNodeId, newY);
-    const node = nodeById[draggingNodeId];
-    node.y = newY;
-    nodeEls[draggingNodeId].setAttribute('transform', `translate(${node.x},${node.y})`);
-    updateEdgesForNode(draggingNodeId);
-    return;
-  }
-  if(!dragging) return;
-  if(Math.abs(e.clientX-dragStartX) > 3 || Math.abs(e.clientY-dragStartY) > 3) dragMoved = true;
-  tx += (e.clientX - lastX); ty += (e.clientY - lastY);
-  lastX = e.clientX; lastY = e.clientY;
+}
+function panMove(clientX, clientY){
+  if(Math.abs(clientX-dragStartX) > 3 || Math.abs(clientY-dragStartY) > 3) dragMoved = true;
+  tx += (clientX - lastX); ty += (clientY - lastY);
+  lastX = clientX; lastY = clientY;
   applyTransform();
-});
-window.addEventListener('mouseup', (e)=>{
-  if(draggingNodeId){
-    nodeEls[draggingNodeId].classList.remove('dragging');
-    if(nodeDragMoved) suppressNextClick = true; // a real drag shouldn't also open the details panel
-    // Highlighting is only meant to apply *while* a node is being
-    // dragged; a genuine click will immediately re-highlight/lock via
-    // its own handler (mouseup always fires before click), so this
-    // doesn't affect normal click-to-view behavior.
-    clearHighlight();
-    draggingNodeId = null;
-    return;
-  }
+}
+function panEnd(){
   const wasDown = downOnCanvas;
   dragging=false; wrap.classList.remove('grabbing'); downOnCanvas = false;
-  // a genuine click (no drag) that started on blank canvas clears the
-  // locked selection. Node clicks stopPropagation on 'click' (which fires
-  // after 'mouseup'), so they re-lock immediately afterwards; clicks that
+  // a genuine click/tap (no drag) that started on blank canvas clears the
+  // locked selection. Node clicks stopPropagation (which fires after
+  // mouseup/touchend), so they re-lock immediately afterwards; clicks that
   // started outside the canvas (toolbar, panel) never set wasDown.
   if(wasDown && !dragMoved){
     clearSelection();
     document.getElementById('panel').classList.remove('open');
   }
+}
+function nodeDragMove(clientY){
+  const dyScreen = clientY - nodeDragStartMouseY;
+  if(Math.abs(dyScreen) > 2) nodeDragMoved = true;
+  const dy = dyScreen / scale; // convert screen-space delta to SVG-space
+  let newY = nodeDragStartNodeY + dy;
+  newY = Math.max(20, Math.min(newY, GRAPH.canvas_h - BOX_H - 20));
+  newY = resolveCollisions(draggingNodeId, newY);
+  const node = nodeById[draggingNodeId];
+  node.y = newY;
+  nodeEls[draggingNodeId].setAttribute('transform', `translate(${node.x},${node.y})`);
+  updateEdgesForNode(draggingNodeId);
+}
+// isTouch: touch has no separate native 'click' fired reliably once we've
+// called preventDefault() during the gesture's touchmove, so a tap (no real
+// movement) is handled as a selection directly here; mouse keeps relying on
+// its own native 'click' listener exactly as before.
+function nodeDragEnd(isTouch){
+  const id = draggingNodeId;
+  nodeEls[id].classList.remove('dragging');
+  if(!nodeDragMoved && isTouch){
+    lockedId = id;
+    highlightFullPath(id);
+    showDetails(id);
+    suppressNextClick = true; // guard in case a browser-generated click also fires
+  } else {
+    if(nodeDragMoved) suppressNextClick = true; // a real drag shouldn't also open the details panel
+    // Highlighting is only meant to apply *while* a node is being dragged;
+    // a genuine click will immediately re-highlight/lock via its own handler.
+    clearHighlight();
+  }
+  draggingNodeId = null;
+}
+
+wrap.addEventListener('mousedown', (e)=> panStart(e.clientX, e.clientY));
+window.addEventListener('mousemove', (e)=>{
+  if(draggingNodeId){ nodeDragMove(e.clientY); return; }
+  if(!dragging) return;
+  panMove(e.clientX, e.clientY);
+});
+window.addEventListener('mouseup', ()=>{
+  if(draggingNodeId){ nodeDragEnd(false); return; }
+  panEnd();
+});
+
+// --- touch: single-finger pan, two-finger pinch-zoom, node drag, tap-to-select ---
+function touchDist(t0, t1){
+  const dx = t0.clientX - t1.clientX, dy = t0.clientY - t1.clientY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+let pinching = false, pinchStartDist = 0, pinchStartScale = 1, pinchMidX = 0, pinchMidY = 0, pinchStartTx = 0, pinchStartTy = 0;
+
+wrap.addEventListener('touchstart', (e)=>{
+  if(draggingNodeId) return; // a node's own touchstart already handled this
+  if(e.touches.length === 1){
+    panStart(e.touches[0].clientX, e.touches[0].clientY);
+  } else if(e.touches.length === 2){
+    dragging = false;
+    pinching = true;
+    pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+    pinchStartScale = scale;
+    const rect = wrap.getBoundingClientRect();
+    pinchMidX = (e.touches[0].clientX + e.touches[1].clientX)/2 - rect.left;
+    pinchMidY = (e.touches[0].clientY + e.touches[1].clientY)/2 - rect.top;
+    pinchStartTx = tx; pinchStartTy = ty;
+  }
+}, {passive:true});
+
+wrap.addEventListener('touchmove', (e)=>{
+  if(draggingNodeId){
+    e.preventDefault();
+    nodeDragMove(e.touches[0].clientY);
+    return;
+  }
+  if(pinching && e.touches.length === 2){
+    e.preventDefault();
+    const dist = touchDist(e.touches[0], e.touches[1]);
+    const newScale = Math.min(Math.max(pinchStartScale * (dist/pinchStartDist), 0.15), 3);
+    const wx = (pinchMidX - pinchStartTx) / pinchStartScale;
+    const wy = (pinchMidY - pinchStartTy) / pinchStartScale;
+    tx = pinchMidX - wx*newScale;
+    ty = pinchMidY - wy*newScale;
+    scale = newScale;
+    applyTransform();
+    return;
+  }
+  if(dragging && e.touches.length === 1){
+    const t = e.touches[0];
+    if(Math.abs(t.clientX-dragStartX) > 3 || Math.abs(t.clientY-dragStartY) > 3) e.preventDefault();
+    panMove(t.clientX, t.clientY);
+  }
+}, {passive:false});
+
+wrap.addEventListener('touchend', (e)=>{
+  if(draggingNodeId){
+    if(e.touches.length === 0) nodeDragEnd(true);
+    return;
+  }
+  if(e.touches.length === 0){
+    pinching = false;
+    panEnd();
+  } else if(e.touches.length === 1){
+    // lifted one finger out of a pinch -- resume single-finger pan from here
+    pinching = false;
+    panStart(e.touches[0].clientX, e.touches[0].clientY);
+  }
 });
 
 // search
-document.getElementById('search').addEventListener('input', (e)=>{
-  const q = e.target.value.trim();
-  if(!q){ clearHighlight(); return; }
-  const match = GRAPH.nodes.find(n => n.id.includes(q));
-  if(match){
-    highlight(match.id);
-    const rect = wrap.getBoundingClientRect();
-    scale = 1;
-    tx = rect.width/2 - (match.x+BOX_W/2);
-    ty = rect.height/2 - (match.y+BOX_H/2);
-    applyTransform();
+let searchMatches = [], searchIndex = -1;
+function searchStatusEl(){ return document.getElementById('search-status'); }
+function setSearchStatus(text, isNoMatch){
+  const el = searchStatusEl();
+  el.textContent = text;
+  el.classList.toggle('no-match', !!isNoMatch);
+  document.getElementById('search').classList.toggle('no-match', !!isNoMatch);
+}
+function jumpToMatch(id){
+  const node = nodeById[id];
+  let note = '';
+  // if the current account-view filter is hiding this match, switch back to
+  // Complete view rather than silently centering on an invisible box
+  if(nodeEls[id].classList.contains('filter-hidden')){
+    const filterSel = document.getElementById('account-filter');
+    filterSel.value = 'all';
+    applyAccountFilter('all');
+    note = ' (switched to Complete view)';
   }
+  highlightFullPath(id);
+  const rect = wrap.getBoundingClientRect();
+  scale = 1;
+  tx = rect.width/2 - (node.x+BOX_W/2);
+  ty = rect.height/2 - (node.y+BOX_H/2);
+  applyTransform();
+  const countLabel = searchMatches.length > 1
+    ? `${searchIndex+1} of ${searchMatches.length} matches`
+    : '1 match';
+  setSearchStatus(countLabel + note, false);
+}
+document.getElementById('search').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  if(!q){
+    searchMatches = []; searchIndex = -1;
+    setSearchStatus('', false);
+    clearHighlight();
+    return;
+  }
+  searchMatches = GRAPH.nodes
+    .filter(n => n.id.toLowerCase().includes(q) || (n.display_account||'').toLowerCase().includes(q))
+    .map(n => n.id);
+  if(searchMatches.length === 0){
+    searchIndex = -1;
+    clearHighlight();
+    setSearchStatus('No matches', true);
+    return;
+  }
+  searchIndex = 0;
+  jumpToMatch(searchMatches[0]);
+});
+document.getElementById('search').addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter' || searchMatches.length < 2) return;
+  e.preventDefault();
+  searchIndex = e.shiftKey
+    ? (searchIndex - 1 + searchMatches.length) % searchMatches.length
+    : (searchIndex + 1) % searchMatches.length;
+  jumpToMatch(searchMatches[searchIndex]);
 });
 
 fitToScreen();
