@@ -20,7 +20,7 @@
     padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);
   }
   #toolbar h1{font-size:15px;font-weight:600;margin:0;color:var(--text);white-space:nowrap;flex:0 0 auto;}
-  #toolbar .sub{font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 120px;min-width:0;}
+  #toolbar .sub{font-size:12px;color:var(--text-dim);flex:1 1 300px;min-width:200px;}
   #search{
     flex:1;max-width:280px;background:var(--panel2);border:1px solid var(--border);
     color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;
@@ -76,6 +76,7 @@
   #notice-group{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
   #notice-mode-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
   #notice-count{font-size:11px;color:var(--text-dim);white-space:nowrap;}
+  #notice-count.warn{color:var(--amber);}
   button.linklike{
     background:none;border:none;color:var(--accent);font-size:12px;padding:4px 2px;
     text-decoration:underline;cursor:pointer;
@@ -85,6 +86,21 @@
   .check-badge{display:none;}
   .node-box.notice-selected .check-badge{display:block;}
   .node-box.notice-selected rect{stroke:var(--accent);stroke-width:2.5;}
+  body.notice-mode .node-box:not(.notice-selected):hover rect{stroke:var(--accent);stroke-width:2;stroke-opacity:0.5;}
+  @keyframes searchPulse{
+    0%{ filter:brightness(1); }
+    30%{ filter:brightness(1.7); }
+    100%{ filter:brightness(1); }
+  }
+  .node-box.search-pulse{ animation:searchPulse 0.5s ease-in-out 2; }
+
+  #toast{
+    position:fixed;left:50%;bottom:28px;transform:translate(-50%, 20px);
+    background:#1d2330;border:1px solid var(--teal);color:var(--text);
+    padding:10px 18px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,0.4);
+    z-index:60;opacity:0;pointer-events:none;transition:opacity 0.25s ease, transform 0.25s ease;
+  }
+  #toast.show{opacity:1;transform:translate(-50%, 0);}
 
   #notice-modal-backdrop{
     display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:50;
@@ -194,15 +210,16 @@
     <button id="notice-mode-btn">Select for notice</button>
     <span id="notice-count"></span>
     <button id="notice-clear-btn" class="linklike" style="display:none;">Clear</button>
-    <button id="generate-notice-btn" disabled>Generate notice</button>
+    <button id="select-all-visible-btn" class="linklike" style="display:none;" title="Selects every account matching the current filter (not the greyed-out trail accounts)">Select all matching</button>
+    <button id="generate-notice-btn" style="display:none;">Generate</button>
   </div>
-  <button id="reset-btn">Reset view</button>
-  <button id="fit-btn">Fit to screen</button>
+  <button id="reset-btn" title="Reset pan/zoom and undo any dragged boxes">Reset</button>
+  <button id="fit-btn" title="Fit the whole diagram to the screen">Fit</button>
 </div>
 
 <div id="stage-wrap">
   <div id="stage"></div>
-  <div id="hint">Scroll to zoom &middot; drag empty space to pan &middot; drag a box up/down to reposition it within its layer &middot; click a box for transaction &amp; withdrawal details &middot; colored dots = cash/cheque/hold recorded on that account &middot; in a filtered view, greyed-out boxes are on the money's path but don't themselves match the filter &middot; use "Select for notice" to pick accounts and generate Section 94 bank notices</div>
+  <div id="hint">Scroll to zoom &middot; drag to pan &middot; click a box to trace its money trail &middot; hover a box or dot for details</div>
 </div>
 
 <div id="legend"></div>
@@ -211,6 +228,8 @@
   <button class="close" id="panel-close">&times;</button>
   <div id="panel-body"></div>
 </div>
+
+<div id="toast"></div>
 
 <div id="notice-modal-backdrop">
   <div id="notice-modal">
@@ -690,21 +709,50 @@ function toggleNoticeSelection(id){
 }
 function updateNoticeCount(){
   const n = noticeSelected.size;
-  document.getElementById('notice-count').textContent = n ? `${n} selected` : '';
+  const hiddenCount = [...noticeSelected].filter(id => nodeEls[id].classList.contains('filter-hidden')).length;
+  const countEl = document.getElementById('notice-count');
+  if(!n){
+    countEl.textContent = '';
+    countEl.classList.remove('warn');
+  } else if(hiddenCount){
+    // some selected accounts are currently hidden by the account-view filter --
+    // flag this so a batch isn't generated (or assumed lost) without realizing
+    // part of the selection is simply out of view right now
+    countEl.textContent = `${n} selected (${hiddenCount} hidden by current filter)`;
+    countEl.classList.add('warn');
+  } else {
+    countEl.textContent = `${n} selected`;
+    countEl.classList.remove('warn');
+  }
   document.getElementById('notice-clear-btn').style.display = n ? 'inline' : 'none';
   const genBtn = document.getElementById('generate-notice-btn');
-  genBtn.disabled = n === 0;
-  genBtn.textContent = n > 1 ? `Generate ${n} notices` : 'Generate notice';
+  genBtn.style.display = n ? 'inline-block' : 'none';
+  genBtn.textContent = n > 1 ? `Generate (${n})` : 'Generate';
 }
 document.getElementById('notice-mode-btn').addEventListener('click', ()=>{
   noticeMode = !noticeMode;
   document.getElementById('notice-mode-btn').classList.toggle('active', noticeMode);
-  document.getElementById('notice-mode-btn').textContent = noticeMode ? 'Selecting\u2026 (click to stop)' : 'Select for notice';
+  document.getElementById('notice-mode-btn').textContent = noticeMode ? 'Done selecting' : 'Select for notice';
+  document.getElementById('notice-mode-btn').title = noticeMode ? 'Stop selecting and return to normal click-to-trace' : 'Click accounts to add them to a notice batch';
+  document.getElementById('select-all-visible-btn').style.display = noticeMode ? 'inline' : 'none';
   document.body.classList.toggle('notice-mode', noticeMode);
 });
 document.getElementById('notice-clear-btn').addEventListener('click', ()=>{
   noticeSelected.forEach(id => nodeEls[id].classList.remove('notice-selected'));
   noticeSelected.clear();
+  updateNoticeCount();
+});
+document.getElementById('select-all-visible-btn').addEventListener('click', ()=>{
+  GRAPH.nodes.forEach(n=>{
+    const g = nodeEls[n.id];
+    // exclude both filter-hidden (not shown at all) and filter-path (shown
+    // only as dimmed trail context) -- "select all matching" should mean
+    // accounts the filter actually surfaced, not their ancestor trail
+    if(!g.classList.contains('filter-hidden') && !g.classList.contains('filter-path') && !noticeSelected.has(n.id)){
+      noticeSelected.add(n.id);
+      g.classList.add('notice-selected');
+    }
+  });
   updateNoticeCount();
 });
 
@@ -724,9 +772,11 @@ function openNoticeModal(){
     document.getElementById('nf-noticedate').value = new Date().toISOString().slice(0,10);
   }
   document.getElementById('notice-modal-backdrop').classList.add('open');
+  document.getElementById('nf-state').focus();
 }
 function closeNoticeModal(){
   document.getElementById('notice-modal-backdrop').classList.remove('open');
+  document.getElementById('generate-notice-btn').focus();
 }
 document.getElementById('generate-notice-btn').addEventListener('click', ()=>{
   if(noticeSelected.size === 0) return;
@@ -735,6 +785,11 @@ document.getElementById('generate-notice-btn').addEventListener('click', ()=>{
 document.getElementById('notice-cancel-btn').addEventListener('click', closeNoticeModal);
 document.getElementById('notice-modal-backdrop').addEventListener('click', (e)=>{
   if(e.target.id === 'notice-modal-backdrop') closeNoticeModal();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && document.getElementById('notice-modal-backdrop').classList.contains('open')){
+    closeNoticeModal();
+  }
 });
 
 function ddmmyyyy(isoDate){
@@ -837,6 +892,14 @@ function downloadDoc(htmlString, filename){
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 
+function showToast(message){
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> toast.classList.remove('show'), 3500);
+}
+
 document.getElementById('notice-generate-btn').addEventListener('click', ()=>{
   const fields = {
     state: document.getElementById('nf-state').value.trim(),
@@ -863,6 +926,11 @@ document.getElementById('notice-generate-btn').addEventListener('click', ()=>{
     setTimeout(()=> downloadDoc(html, noticeFilename(node, i, ids.length)), i * 200);
   });
   closeNoticeModal();
+  // selection deliberately persists (not cleared) in case the officer needs
+  // to regenerate this batch after fixing a typo in the case details
+  setTimeout(()=>{
+    showToast(ids.length > 1 ? `${ids.length} notices generated and downloaded` : '1 notice generated and downloaded');
+  }, ids.length * 200 + 300);
 });
 
 
@@ -896,6 +964,7 @@ function applyAccountFilter(mode){
     Object.values(nodeEls).forEach(g => g.classList.remove('filter-hidden','filter-path'));
     edgeEls.forEach(p => p.classList.remove('filter-hidden','filter-path'));
     updateFilterCount(GRAPH.nodes.length);
+    updateNoticeCount();
     return;
   }
 
@@ -926,6 +995,7 @@ function applyAccountFilter(mode){
   });
 
   updateFilterCount(matchIds.size);
+  updateNoticeCount();
 
   // a locked/highlighted selection that's no longer visible shouldn't stay open
   if(lockedId && !visible.has(lockedId)){
@@ -1146,6 +1216,16 @@ function setSearchStatus(text, isNoMatch){
   el.classList.toggle('no-match', !!isNoMatch);
   document.getElementById('search').classList.toggle('no-match', !!isNoMatch);
 }
+// Brief attention-drawing flash on a box, used when search locates an
+// account while in notice-selection mode -- centers/finds it without
+// running the full-path trace (which would fight with picking more boxes).
+function pulseNode(id){
+  const g = nodeEls[id];
+  g.classList.remove('search-pulse');
+  void g.getBoundingClientRect(); // force reflow so the animation restarts if re-triggered
+  g.classList.add('search-pulse');
+  setTimeout(()=> g.classList.remove('search-pulse'), 1000);
+}
 function jumpToMatch(id){
   const node = nodeById[id];
   let note = '';
@@ -1157,7 +1237,11 @@ function jumpToMatch(id){
     applyAccountFilter('all');
     note = ' (switched to Complete view)';
   }
-  highlightFullPath(id);
+  if(noticeMode){
+    pulseNode(id);
+  } else {
+    highlightFullPath(id);
+  }
   const rect = wrap.getBoundingClientRect();
   scale = 1;
   tx = rect.width/2 - (node.x+BOX_W/2);
