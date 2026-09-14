@@ -67,6 +67,7 @@ def generate_html(data, out_path, template_path=None):
         "edges": layout["edges"],
         "canvas_w": layout["canvas_w"],
         "canvas_h": layout["canvas_h"],
+        "unref_section_y": layout["unref_section_y"],
     }
     withdrawals = _build_withdrawals(data)
     withdrawal_txns = _build_withdrawal_txns(data)
@@ -101,7 +102,9 @@ def generate_html(data, out_path, template_path=None):
     # toolbar summary line
     n_accounts = len(data["nodes"])
     n_txns = len(data["edges"])
-    max_depth = max(n["depth"] for n in data["nodes"])
+    flow_depths = [n["depth"] for n in data["nodes"] if not n.get("unreferenced")]
+    max_depth = max(flow_depths) if flow_depths else 0
+    n_unref = sum(1 for n in data["nodes"] if n.get("unreferenced"))
     summary = (
         f"{n_accounts} accounts &middot; {n_txns} transactions &middot; "
         f"layers 0&ndash;{max_depth} &middot; "
@@ -109,6 +112,8 @@ def generate_html(data, out_path, template_path=None):
         f"&#8377;{_fmt_inr(data['total_cheque'])} cheque &middot; "
         f"&#8377;{_fmt_inr(data['total_hold'])} on hold"
     )
+    if n_unref:
+        summary += f" &middot; {n_unref} with no linked transaction"
     html = re.sub(
         r'(<div class="sub">).*?(</div>)',
         lambda m: m.group(1) + summary + m.group(2),
