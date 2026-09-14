@@ -73,6 +73,10 @@
   .node-title{font-size:11px;font-weight:600;fill:#fff;font-family:"SF Mono",Consolas,Menlo,monospace;}
   .node-sub{font-size:10px;fill:rgba(255,255,255,0.75);}
   .flag-dot{stroke:rgba(0,0,0,0.4);stroke-width:0.9;}
+  .unref-rect{stroke:#6b7386;stroke-width:1.5;stroke-dasharray:5,3;}
+  .unref-label{fill:var(--text-dim);}
+  .unref-sublabel{font-size:11px;fill:var(--text-mute);font-style:italic;}
+  .unref-divider{stroke:var(--border);stroke-width:1;stroke-dasharray:4,4;}
   #notice-group{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
   #notice-mode-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
   #notice-count{font-size:11px;color:var(--text-dim);white-space:nowrap;}
@@ -282,7 +286,7 @@ function buildColorRamp(depthCount){
   return ramp;
 }
 // depth count is known once GRAPH.nodes is available; +1 covers depth 0
-const colorRamp = buildColorRamp(Math.max(...GRAPH.nodes.map(n=>n.depth)) + 1);
+const colorRamp = buildColorRamp(Math.max(...GRAPH.nodes.filter(n=>!n.unreferenced).map(n=>n.depth)) + 1);
 function colorForDepth(d){ return colorRamp[d % colorRamp.length].c; }
 
 function fmtAmt(v){
@@ -342,14 +346,32 @@ svg.appendChild(nodeLayer);
 document.getElementById('stage').appendChild(svg);
 
 // column labels
-const depths = [...new Set(GRAPH.nodes.map(n=>n.depth))].sort((a,b)=>a-b);
+const depths = [...new Set(GRAPH.nodes.filter(n=>!n.unreferenced).map(n=>n.depth))].sort((a,b)=>a-b);
 depths.forEach(d=>{
-  const xs = GRAPH.nodes.filter(n=>n.depth===d).map(n=>n.x);
+  const xs = GRAPH.nodes.filter(n=>n.depth===d && !n.unreferenced).map(n=>n.x);
   const x = xs[0] + BOX_W/2;
   const t = el('text', {x, y:30, class:'col-label', 'text-anchor':'middle'});
   t.textContent = d===0 ? 'Layer 0 (origin)' : 'Layer ' + d;
   labelLayer.appendChild(t);
 });
+
+// header for the separated "no linked transaction" section, if present --
+// these accounts showed up in a footnote sheet with no real edge anywhere
+// in the money trail, so they're deliberately kept apart from the traced
+// flow rather than implied to be part of it
+if(GRAPH.unref_section_y != null){
+  const unrefNodes = GRAPH.nodes.filter(n=>n.unreferenced);
+  const xs = unrefNodes.map(n=>n.x);
+  const minX = Math.min(...xs), maxX = Math.max(...xs) + BOX_W;
+  const t = el('text', {x:minX, y:GRAPH.unref_section_y + 22, class:'col-label unref-label'});
+  t.textContent = `No linked transaction found (${unrefNodes.length})`;
+  labelLayer.appendChild(t);
+  const sub = el('text', {x:minX, y:GRAPH.unref_section_y + 40, class:'unref-sublabel'});
+  sub.textContent = 'Referenced only in a footnote/fee record \u2014 not part of the traced money flow';
+  labelLayer.appendChild(sub);
+  const divider = el('line', {x1:minX, y1:GRAPH.unref_section_y + 8, x2:maxX, y2:GRAPH.unref_section_y + 8, class:'unref-divider'});
+  labelLayer.appendChild(divider);
+}
 
 // Builds the path 'd' string between two nodes (each {x,y}), including
 // the midpoint split used for the arrowhead marker. Called once per edge
@@ -440,7 +462,12 @@ function resolveCollisions(nodeId, desiredY){
 const nodeEls = {};
 GRAPH.nodes.forEach(n=>{
   const g = el('g', {class:'node-box', 'data-id': n.id, transform: `translate(${n.x},${n.y})`});
-  const rect = el('rect', {x:0, y:0, width:BOX_W, height:BOX_H, rx:8, fill:colorForDepth(n.depth), 'fill-opacity':0.9});
+  const rect = el('rect', {
+    x:0, y:0, width:BOX_W, height:BOX_H, rx:8,
+    fill: n.unreferenced ? '#3a3f4b' : colorForDepth(n.depth),
+    'fill-opacity': n.unreferenced ? 0.6 : 0.9,
+    class: n.unreferenced ? 'unref-rect' : ''
+  });
   g.appendChild(rect);
   const fullAcct = (n.display_account || n.id || '').toString();
   const title = el('text', {x:10, y:22, class:'node-title'});
@@ -603,7 +630,8 @@ function showDetails(id){
   let html = `<h2>${n.bank || 'Account'}</h2>
     <div class="acct">${n.display_account || id}</div>
     <div class="section"><h3>Details</h3>
-      <div class="tx-item">Bank: ${n.bank||'Unknown'}<br>Layer: ${n.depth}</div>
+      <div class="tx-item">Bank: ${n.bank||'Unknown'}<br>${n.unreferenced ? 'No linked transaction in the money trail' : 'Layer: ' + n.depth}</div>
+      ${n.unreferenced ? '<div class="tx-item" style="color:var(--text-mute);font-style:italic;">This account was only referenced in a footnote/fee record, with no transfer connecting it to the traced flow.</div>' : ''}
     </div>`;
   const wd = WITHDRAWALS[id];
   if (wd) {
