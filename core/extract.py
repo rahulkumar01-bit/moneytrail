@@ -164,7 +164,6 @@ def extract_data(xlsx_path):
 
     nodes = [{"id": n, "display_account": n, "depth": depth[n], "bank": bank_map.get(n, "Unknown")}
               for n in node_ids]
-    node_by_acct_depth = {(n["id"], n["depth"]): n for n in nodes}
     nodes_by_id = {n["id"]: n for n in nodes}
 
     layer1_total = sum(e["amt"] for e in edges if e["layer"] == 1 and e["amt"])
@@ -224,32 +223,41 @@ def extract_data(xlsx_path):
                 hold_totals[acct] = hold_totals.get(acct, 0) + amt
 
     # ---------------- "Others Less Then 500" and "Other" sheets ----------------
-    # These sheets list per-account entries (not src->dst transfers) tagged
-    # with a Layer. Each entry is attached to the existing node for that
-    # exact (account, layer) pair if one already exists; otherwise a new,
-    # standalone node is created for that account at that layer (with no
-    # connectors of its own, since these aren't transfer edges).
+    # These sheets list per-account entries (not src->dst transfers), one row
+    # per miscellaneous note (a small ATM fee, a "transaction not reflecting"
+    # remark, etc.). They do NOT actually have a reliable Layer column -- the
+    # sheet's last column is "pisnodal" (an unrelated bank-portal flag that is
+    # 0 for essentially every row), not a layer number. Treating it as layer
+    # would force every entry into a bogus Layer-0 "Victim's Account" node
+    # even when the account already exists correctly elsewhere in the graph
+    # (e.g. as a real Layer 2 destination), producing a confusing duplicate.
+    #
+    # Instead: attach each entry to the account's one real existing node,
+    # found by account number alone, regardless of layer. Only if the account
+    # genuinely never appears anywhere in the "Money Transfer to" graph do we
+    # create a new node for it -- and since there is then no reliable layer
+    # info at all, that node is flagged `unreferenced` so the UI can show it
+    # in a clearly separated "no linked transaction found" section instead of
+    # implying it sits in the real money trail.
     extra_txns_by_node = {}
-    new_node_lookup = {}  # (account, layer) -> node id, for nodes created here
+    new_node_lookup = {}  # account -> node id, for unreferenced nodes created here
 
-    def _attach_extra_txn(acct, layer, txn, bank_for_new_node):
-        if layer is None:
-            return
-        existing = node_by_acct_depth.get((acct, layer))
+    def _attach_extra_txn(acct, txn, bank_for_new_node):
+        existing = nodes_by_id.get(acct)
         if existing is not None:
             node_id = existing["id"]
         else:
-            node_id = new_node_lookup.get((acct, layer))
+            node_id = new_node_lookup.get(acct)
             if node_id is None:
-                node_id = f"{acct}__L{layer}"
-                new_node_lookup[(acct, layer)] = node_id
+                node_id = f"{acct}__unref"
+                new_node_lookup[acct] = node_id
                 new_node = {
-                    "id": node_id, "display_account": acct, "depth": layer,
+                    "id": node_id, "display_account": acct, "depth": 0,
                     "bank": bank_for_new_node or "Unknown",
+                    "unreferenced": True,
                 }
                 nodes.append(new_node)
                 nodes_by_id[node_id] = new_node
-                node_by_acct_depth[(acct, layer)] = new_node
         extra_txns_by_node.setdefault(node_id, []).append(txn)
 
     if "Others Less Then 500" in wb.sheetnames:
@@ -258,7 +266,6 @@ def extract_data(xlsx_path):
             if r is None or r[2] is None:
                 continue
             acct = _normalize_account(str(r[2]))
-            layer = r[8] if len(r) > 8 else None
             bank = _clean_str(r[6]) if len(r) > 6 else None
             txn = {
                 "txn_id": r[3] if len(r) > 3 else None,
@@ -269,7 +276,7 @@ def extract_data(xlsx_path):
                 "type": "Other (below Rs. 500)",
                 "show_remarks": True,
             }
-            _attach_extra_txn(acct, layer, txn, bank)
+            _attach_extra_txn(acct, txn, bank)
 
     if "Other" in wb.sheetnames:
         ows2 = wb["Other"]
@@ -277,7 +284,6 @@ def extract_data(xlsx_path):
             if r is None or r[2] is None:
                 continue
             acct = _normalize_account(str(r[2]))
-            layer = r[10] if len(r) > 10 else None
             bank = _clean_str(r[8]) if len(r) > 8 else None
             txn = {
                 "txn_id": r[3] if len(r) > 3 else None,
@@ -288,7 +294,7 @@ def extract_data(xlsx_path):
                 "type": "Other",
                 "show_remarks": True,
             }
-            _attach_extra_txn(acct, layer, txn, bank)
+            _attach_extra_txn(acct, txn, bank)
 
     data = {
         "ack_no": ack_no,
