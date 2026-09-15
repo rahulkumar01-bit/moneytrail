@@ -219,6 +219,7 @@
   </div>
   <button id="reset-btn" title="Reset pan/zoom and undo any dragged boxes">Reset</button>
   <button id="fit-btn" title="Fit the whole diagram to the screen">Fit</button>
+  <button id="case-summary-btn" title="Generate a 2-3 page investigation summary (opens in a new tab, ready to print/save as PDF)">Case Summary</button>
 </div>
 
 <div id="stage-wrap">
@@ -960,6 +961,226 @@ document.getElementById('notice-generate-btn').addEventListener('click', ()=>{
     showToast(ids.length > 1 ? `${ids.length} notices generated and downloaded` : '1 notice generated and downloaded');
   }, ids.length * 200 + 300);
 });
+
+// ---- case summary report (browser print-to-PDF) ----
+// Rather than bundling a PDF library, this opens a clean, print-optimized
+// report in a new tab and lets the browser's own (very reliable) print
+// pagination produce the PDF via "Print > Save as PDF" -- avoids hand-rolling
+// page-break logic and keeps the main HTML file dependency-free.
+function fmtINR(v){
+  if(v == null || isNaN(v)) return '0';
+  return Math.round(v).toLocaleString('en-IN');
+}
+
+function computeCaseSummaryData(){
+  const flowNodes = GRAPH.nodes.filter(n => !n.unreferenced);
+  const banks = new Set(flowNodes.map(n => n.bank || 'Unknown'));
+  const parsedDates = GRAPH.edges.map(e => e.date).filter(Boolean).map(d => new Date(d)).filter(d => !isNaN(d));
+  const dateRange = parsedDates.length
+    ? { min: new Date(Math.min(...parsedDates)), max: new Date(Math.max(...parsedDates)) }
+    : null;
+
+  const incomingAmt = {}, outgoingAmt = {}, incomingCount = {}, outgoingCount = {};
+  GRAPH.edges.forEach(e=>{
+    if(e.amt){
+      incomingAmt[e.dst] = (incomingAmt[e.dst]||0) + e.amt;
+      outgoingAmt[e.src] = (outgoingAmt[e.src]||0) + e.amt;
+    }
+    incomingCount[e.dst] = (incomingCount[e.dst]||0) + 1;
+    outgoingCount[e.src] = (outgoingCount[e.src]||0) + 1;
+  });
+
+  // likely mule accounts: ranked by actual cash physically removed from the
+  // banking system (ATM + cheque) -- the hardest money to recover
+  const cashOut = flowNodes.map(n=>{
+    const wd = WITHDRAWALS[n.id] || {atm:0, cheque:0, hold:0};
+    const withdrawn = (wd.atm||0) + (wd.cheque||0);
+    const received = incomingAmt[n.id] || 0;
+    return { node:n, atm:wd.atm||0, cheque:wd.cheque||0, withdrawn, received,
+             ratio: received>0 ? withdrawn/received : null };
+  }).filter(r => r.withdrawn > 0).sort((a,b)=> b.withdrawn - a.withdrawn);
+
+  // primary suspect / hub accounts: mid-chain accounts that both receive
+  // AND forward money on -- ranked by total money passing through them
+  const hubs = flowNodes.filter(n=>n.depth>=1).map(n=>{
+    const inAmt = incomingAmt[n.id]||0, outAmt = outgoingAmt[n.id]||0;
+    return { node:n, inAmt, outAmt, inCount: incomingCount[n.id]||0,
+             outCount: outgoingCount[n.id]||0, throughput: inAmt + outAmt };
+  }).filter(r => r.outCount > 0).sort((a,b)=> b.throughput - a.throughput);
+
+  // recovery opportunities: funds currently frozen/on hold
+  const onHold = flowNodes.map(n=>{
+    const wd = WITHDRAWALS[n.id];
+    return { node:n, hold: wd ? (wd.hold||0) : 0 };
+  }).filter(r=> r.hold > 0).sort((a,b)=> b.hold - a.hold);
+
+  // bank-wise breakdown
+  const bankMap = {};
+  flowNodes.forEach(n=>{
+    const bank = n.bank || 'Unknown';
+    (bankMap[bank] = bankMap[bank] || {bank, accounts:0, amount:0});
+    bankMap[bank].accounts += 1;
+    bankMap[bank].amount += incomingAmt[n.id] || 0;
+  });
+  const bankRows = Object.values(bankMap).sort((a,b)=> b.amount - a.amount);
+
+  const sumAtm = Object.values(WITHDRAWALS).reduce((s,w)=>s+(w.atm||0),0);
+  const sumCheque = Object.values(WITHDRAWALS).reduce((s,w)=>s+(w.cheque||0),0);
+  const sumHold = Object.values(WITHDRAWALS).reduce((s,w)=>s+(w.hold||0),0);
+
+  return {
+    flowNodes, banks, dateRange, cashOut, hubs, onHold, bankRows,
+    sumAtm, sumCheque, sumHold,
+    totalAccounts: GRAPH.nodes.length,
+    totalLayers: Math.max(...flowNodes.map(n=>n.depth)),
+    totalUnref: GRAPH.nodes.length - flowNodes.length,
+  };
+}
+
+function buildCaseSummaryHtml(){
+  const d = computeCaseSummaryData();
+  const genDate = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+  const dateRangeText = d.dateRange
+    ? `${d.dateRange.min.toLocaleDateString('en-IN')} to ${d.dateRange.max.toLocaleDateString('en-IN')}`
+    : 'Not available';
+  const acctLabel = n => escHtml(n.display_account || n.id);
+
+  const cashOutRows = d.cashOut.slice(0,10).map((r,i)=>`
+    <tr><td>${i+1}</td><td>${acctLabel(r.node)}</td><td>${escHtml(r.node.bank||'Unknown')}</td>
+    <td class="num">${r.node.depth}</td><td class="num">${fmtINR(r.received)}</td>
+    <td class="num">${fmtINR(r.atm)}</td><td class="num">${fmtINR(r.cheque)}</td>
+    <td class="num">${fmtINR(r.withdrawn)}</td>
+    <td class="num">${r.ratio!=null ? Math.round(r.ratio*100)+'%' : '\u2014'}</td></tr>`).join('');
+
+  const hubRows = d.hubs.slice(0,10).map((r,i)=>`
+    <tr><td>${i+1}</td><td>${acctLabel(r.node)}</td><td>${escHtml(r.node.bank||'Unknown')}</td>
+    <td class="num">${r.node.depth}</td><td class="num">${fmtINR(r.inAmt)} (${r.inCount})</td>
+    <td class="num">${fmtINR(r.outAmt)} (${r.outCount})</td>
+    <td class="num">${fmtINR(r.throughput)}</td></tr>`).join('');
+
+  const holdRows = d.onHold.slice(0,10).map((r,i)=>`
+    <tr><td>${i+1}</td><td>${acctLabel(r.node)}</td><td>${escHtml(r.node.bank||'Unknown')}</td>
+    <td class="num">${r.node.depth}</td><td class="num">${fmtINR(r.hold)}</td></tr>`).join('');
+  const holdTotal = d.onHold.reduce((s,r)=>s+r.hold,0);
+
+  const bankRows = d.bankRows.slice(0,10).map(r=>`
+    <tr><td>${escHtml(r.bank)}</td><td class="num">${r.accounts}</td>
+    <td class="num">${fmtINR(r.amount)}</td></tr>`).join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Case Summary${GRAPH.ack_no ? ' - ' + escHtml(GRAPH.ack_no) : ''}</title>
+<style>
+  @page{ margin:0.7in; }
+  *{ box-sizing:border-box; }
+  body{ font-family:Georgia,'Times New Roman',serif; color:#1a1a1a; font-size:10.5pt; line-height:1.4; margin:0; }
+  h1{ font-size:18pt; margin:0 0 4pt; }
+  h2{ font-size:13pt; margin:16pt 0 5pt; border-bottom:1.5pt solid #333; padding-bottom:3pt; }
+  .meta{ font-size:10pt; color:#555; margin-bottom:8pt; }
+  .disclaimer{ font-size:8.5pt; color:#777; font-style:italic; margin:4pt 0 10pt; padding:6pt 8pt; background:#f7f7f7; border-left:2.5pt solid #999; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:7pt 10pt; margin:8pt 0 4pt; }
+  .stat{ border:0.75pt solid #ccc; border-radius:3pt; padding:6pt 8pt; }
+  .stat .label{ font-size:7.5pt; color:#666; text-transform:uppercase; letter-spacing:0.2pt; }
+  .stat .value{ font-size:12.5pt; font-weight:bold; margin-top:1pt; }
+  table{ width:100%; border-collapse:collapse; margin:5pt 0 2pt; font-size:9pt; }
+  th{ text-align:left; background:#eaeaea; border:0.75pt solid #999; padding:3.5pt 5pt; font-size:8.25pt; }
+  td{ border:0.75pt solid #ccc; padding:3.5pt 5pt; }
+  td.num, th.num{ text-align:right; }
+  tr{ page-break-inside:avoid; }
+  .section{ page-break-inside:avoid; }
+  .total-row td{ font-weight:bold; background:#f5f5f5; }
+  .note{ font-size:8.5pt; color:#666; margin:3pt 0; }
+  #print-bar{
+    position:sticky; top:0; background:#f0f0f0; border-bottom:1pt solid #ccc;
+    padding:10px 16px; display:flex; justify-content:space-between; align-items:center;
+    font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; font-size:13px; z-index:10;
+  }
+  #print-bar button{ padding:7px 18px; font-size:13px; cursor:pointer; border-radius:6px; border:1px solid #888; background:#fff; }
+  #print-bar button:hover{ background:#e8e8e8; }
+  .page{ padding:0.4in 0.7in 0.7in; }
+  @media print{ #print-bar{ display:none; } .page{ padding:0; } }
+</style>
+</head>
+<body>
+<div id="print-bar">
+  <span>Case summary ready \u2014 review below, then print or save as PDF.</span>
+  <button onclick="window.print()">Print / Save as PDF</button>
+</div>
+<div class="page">
+
+<h1>Money Trail \u2014 Case Summary</h1>
+<div class="meta">
+  Complaint / Acknowledgement No: <strong>${escHtml(GRAPH.ack_no || 'Not available')}</strong><br>
+  Report generated: ${genDate} &middot; Transaction date range: ${dateRangeText}
+</div>
+<div class="disclaimer">This report is generated automatically from the extracted bank data. Account flags below (mule / primary suspect) are data-driven rankings by transaction pattern, meant to help prioritize investigation \u2014 they are not a legal determination. Verify all figures against original bank records before use in proceedings.</div>
+
+<h2>Case Overview</h2>
+<div class="stat-grid">
+  <div class="stat"><div class="label">Accounts Traced</div><div class="value">${d.totalAccounts}</div></div>
+  <div class="stat"><div class="label">Layers Deep</div><div class="value">${d.totalLayers}</div></div>
+  <div class="stat"><div class="label">Banks Involved</div><div class="value">${d.banks.size}</div></div>
+  <div class="stat"><div class="label">Amount Moved (Layer 1)</div><div class="value">\u20b9${fmtINR(GRAPH.layer1_total)}</div></div>
+  <div class="stat"><div class="label">Total Cash Withdrawn</div><div class="value">\u20b9${fmtINR(d.sumAtm)}</div></div>
+  <div class="stat"><div class="label">Total Cheque Encashed</div><div class="value">\u20b9${fmtINR(d.sumCheque)}</div></div>
+  <div class="stat"><div class="label">Total On Hold</div><div class="value">\u20b9${fmtINR(d.sumHold)}</div></div>
+  <div class="stat"><div class="label">No Linked Transaction</div><div class="value">${d.totalUnref}</div></div>
+</div>
+
+<div class="section">
+<h2>Likely Mule Accounts \u2014 Highest Cash-Out Activity</h2>
+<p class="note">Ranked by total amount physically withdrawn (ATM + cheque). These accounts represent where case funds actually left the banking system, and are the hardest to recover.</p>
+<table>
+<tr><th>#</th><th>Account Number</th><th>Bank</th><th class="num">Layer</th><th class="num">Received (\u20b9)</th><th class="num">ATM (\u20b9)</th><th class="num">Cheque (\u20b9)</th><th class="num">Total Cashed Out (\u20b9)</th><th class="num">% of Received</th></tr>
+${cashOutRows || '<tr><td colspan="9">No withdrawal activity recorded.</td></tr>'}
+</table>
+<p class="note">% of Received can exceed 100% where the bank's reported withdrawal figure includes funds beyond this case's traced inflow (e.g. pre-existing balance or other credits).</p>
+</div>
+
+<div class="section">
+<h2>Primary Suspect Accounts \u2014 Key Hubs in the Fund Flow</h2>
+<p class="note">Ranked by total money passing through (received + forwarded). These mid-chain accounts aggregate funds from multiple sources and/or distribute to multiple destinations \u2014 often where a controlling party sits.</p>
+<table>
+<tr><th>#</th><th>Account Number</th><th>Bank</th><th class="num">Layer</th><th class="num">Received \u20b9 (txns)</th><th class="num">Forwarded \u20b9 (txns)</th><th class="num">Total Throughput (\u20b9)</th></tr>
+${hubRows || '<tr><td colspan="7">No multi-hop hub accounts identified.</td></tr>'}
+</table>
+</div>
+
+<div class="section">
+<h2>Recovery Opportunities \u2014 Funds Currently On Hold</h2>
+<p class="note">These amounts have been frozen by the respective banks and represent the case's best immediate recovery potential.</p>
+<table>
+<tr><th>#</th><th>Account Number</th><th>Bank</th><th class="num">Layer</th><th class="num">On Hold (\u20b9)</th></tr>
+${holdRows || '<tr><td colspan="5">No amounts currently on hold.</td></tr>'}
+${d.onHold.length ? `<tr class="total-row"><td colspan="4">Total On Hold${d.onHold.length>10?' (top 10 shown above)':''}</td><td class="num">\u20b9${fmtINR(holdTotal)}</td></tr>` : ''}
+</table>
+</div>
+
+<div class="section">
+<h2>Bank-Wise Breakdown</h2>
+<table>
+<tr><th>Bank</th><th class="num">Accounts</th><th class="num">Amount Handled (\u20b9)</th></tr>
+${bankRows}
+</table>
+</div>
+
+<p class="note" style="margin-top:14pt;">Generated by Money Trail Report Generator &middot; Case reference: ${escHtml(GRAPH.ack_no || 'N/A')}</p>
+
+</div>
+</body>
+</html>`;
+}
+
+function openCaseSummary(){
+  const html = buildCaseSummaryHtml();
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(()=>URL.revokeObjectURL(url), 15000);
+}
+document.getElementById('case-summary-btn').addEventListener('click', openCaseSummary);
 
 
 
