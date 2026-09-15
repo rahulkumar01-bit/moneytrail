@@ -68,6 +68,8 @@ def generate_html(data, out_path, template_path=None):
         "canvas_w": layout["canvas_w"],
         "canvas_h": layout["canvas_h"],
         "unref_section_y": layout["unref_section_y"],
+        "ack_no": data.get("ack_no"),
+        "layer1_total": data.get("layer1_total"),
     }
     withdrawals = _build_withdrawals(data)
     withdrawal_txns = _build_withdrawal_txns(data)
